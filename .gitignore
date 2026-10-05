@@ -7,6 +7,7 @@ bun.lock
 .millennium/lsp/
 .millennium/sourcemaps/
 *.star
+!dist/*.star
 
 # Runtime data & temp downloads
 backend/data/downloads/

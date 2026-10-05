@@ -4,7 +4,7 @@
   "description": "Adds a native-style Actions menu to Steam Store and Library game pages.",
   "scripts": {
     "dev": "./node_modules/.bin/starlight watch",
-    "build": "./node_modules/.bin/starlight pack",
+    "build": "./node_modules/.bin/starlight pack && ./node_modules/.bin/starlight pack -o ./dist",
     "prepare": "./node_modules/.bin/starlight lsp"
   },
   "devDependencies": {
