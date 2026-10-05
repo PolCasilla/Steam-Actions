@@ -71,11 +71,9 @@ export class NativeActionButton {
     const outerSpan =
       (sampleButton.querySelector("span")?.cloneNode(false) as HTMLElement | null) ||
       document.createElement("span");
-    const innerSpan =
-      (sampleButton.querySelector("span > span")?.cloneNode(false) as HTMLElement | null) ||
-      document.createElement("span");
-    innerSpan.textContent = options.label;
-    outerSpan.replaceChildren(innerSpan);
+    const textSpan = document.createElement("span");
+    textSpan.textContent = options.label;
+    outerSpan.replaceChildren(textSpan);
     button.replaceChildren(outerSpan);
 
     const activate = (event: Event): void => {
