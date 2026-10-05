@@ -3,11 +3,11 @@ node_modules/
 bun.lock
 
 # Millennium & Starlight build artifacts
+dist/
 .millennium/Dist/
 .millennium/lsp/
 .millennium/sourcemaps/
 *.star
-!dist/*.star
 
 # Runtime data & temp downloads
 backend/data/downloads/
