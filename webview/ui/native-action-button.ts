@@ -39,14 +39,8 @@ export class NativeActionButton {
       return;
     }
 
-    const inBpm =
-      this.isBpm === true ||
-      (this.isBpm === null && !document.querySelector(ACTION_HOST_SELECTOR) && this.findBpmControls() !== null);
-
-    if (inBpm) {
-      if (this.ensureBpm(options)) {
-        return;
-      }
+    if (this.ensureBpm(options)) {
+      return;
     }
 
     this.ensureDesktop(options);
@@ -74,11 +68,15 @@ export class NativeActionButton {
     button.removeAttribute("id");
     button.classList.add("Focusable", "steam-actions-bpm-button");
 
-    const textSpan =
+    const outerSpan =
       (sampleButton.querySelector("span")?.cloneNode(false) as HTMLElement | null) ||
       document.createElement("span");
-    textSpan.textContent = options.label;
-    button.replaceChildren(textSpan);
+    const innerSpan =
+      (sampleButton.querySelector("span > span")?.cloneNode(false) as HTMLElement | null) ||
+      document.createElement("span");
+    innerSpan.textContent = options.label;
+    outerSpan.replaceChildren(innerSpan);
+    button.replaceChildren(outerSpan);
 
     const activate = (event: Event): void => {
       event.preventDefault();
@@ -106,8 +104,8 @@ export class NativeActionButton {
 
   private findBpmControls(): { followWrapper: HTMLElement; ignoreWrapper: HTMLElement } | null {
     const buttons = Array.from(document.querySelectorAll<HTMLElement>("button, [role='button']"));
-    const followBtn = buttons.find((b) => /\bfollow(ed)?\b/i.test(b.textContent || ""));
-    const ignoreBtn = buttons.find((b) => /\bignore(d)?\b/i.test(b.textContent || ""));
+    const followBtn = buttons.find((b) => (b.textContent || "").toLowerCase().includes("follow"));
+    const ignoreBtn = buttons.find((b) => (b.textContent || "").toLowerCase().includes("ignore"));
 
     if (!followBtn || !ignoreBtn) {
       return null;
