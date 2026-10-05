@@ -61,3 +61,23 @@ export const inputStyle = {
   outline: "none",
   boxSizing: "border-box" as const,
 };
+
+export const statusCardBase = {
+  borderRadius: "3px",
+  padding: "14px",
+  marginBottom: "20px",
+  textAlign: "left" as const,
+};
+
+export const statusCardSuccess = {
+  ...statusCardBase,
+  background: "rgba(76, 175, 80, 0.08)",
+  border: "1px solid rgba(76, 175, 80, 0.3)",
+};
+
+export const statusCardDanger = {
+  ...statusCardBase,
+  background: "rgba(244, 67, 54, 0.08)",
+  border: "1px solid rgba(244, 67, 54, 0.3)",
+};
+

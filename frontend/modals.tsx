@@ -8,6 +8,8 @@ import {
   btnSecondary,
   btnDanger,
   inputStyle,
+  statusCardSuccess,
+  statusCardDanger,
 } from "./ui/styles";
 import { SpinnerIcon, SuccessIcon, ErrorIcon, WarningIcon } from "./ui/icons";
 
@@ -211,16 +213,7 @@ function AddToLibraryModalContent({
           ),
           React.createElement(
             "div",
-            {
-              style: {
-                background: "rgba(76, 175, 80, 0.08)",
-                border: "1px solid rgba(76, 175, 80, 0.3)",
-                borderRadius: "3px",
-                padding: "14px",
-                marginBottom: "20px",
-                textAlign: "left" as const,
-              },
-            },
+            { style: statusCardSuccess },
             React.createElement("div", { style: { fontSize: "14px", fontWeight: "bold", color: "#ffffff", marginBottom: "4px" } }, context.title),
             React.createElement("div", { style: { fontSize: "13px", color: "#c6d4df", marginBottom: "6px" } }, "This game is now added to your Steam library."),
             React.createElement("div", { style: { fontSize: "12px", color: theme.textMuted } }, `App ID: ${context.appId}`)
@@ -239,16 +232,7 @@ function AddToLibraryModalContent({
           ),
           React.createElement(
             "div",
-            {
-              style: {
-                background: "rgba(244, 67, 54, 0.08)",
-                border: "1px solid rgba(244, 67, 54, 0.3)",
-                borderRadius: "3px",
-                padding: "14px",
-                marginBottom: "20px",
-                textAlign: "left" as const,
-              },
-            },
+            { style: statusCardDanger },
             React.createElement("div", { style: { fontSize: "14px", fontWeight: "bold", color: "#ffffff", marginBottom: "6px" } }, context.title),
             React.createElement("div", { style: { fontSize: "13px", color: "#f48fb1", wordBreak: "break-word" as const } }, errorMessage)
           ),
@@ -372,16 +356,7 @@ function RemoveFromLibraryModalContent({
           ),
           React.createElement(
             "div",
-            {
-              style: {
-                background: "rgba(76, 175, 80, 0.08)",
-                border: "1px solid rgba(76, 175, 80, 0.3)",
-                borderRadius: "3px",
-                padding: "14px",
-                marginBottom: "20px",
-                textAlign: "left" as const,
-              },
-            },
+            { style: statusCardSuccess },
             React.createElement("div", { style: { fontSize: "14px", fontWeight: "bold", color: "#ffffff", marginBottom: "4px" } }, context.title),
             React.createElement("div", { style: { fontSize: "13px", color: "#c6d4df", marginBottom: "6px" } }, "This game has been removed from your library folder."),
             React.createElement("div", { style: { fontSize: "12px", color: theme.textMuted } }, `App ID: ${context.appId}`)
@@ -400,16 +375,7 @@ function RemoveFromLibraryModalContent({
           ),
           React.createElement(
             "div",
-            {
-              style: {
-                background: "rgba(244, 67, 54, 0.08)",
-                border: "1px solid rgba(244, 67, 54, 0.3)",
-                borderRadius: "3px",
-                padding: "14px",
-                marginBottom: "20px",
-                textAlign: "left" as const,
-              },
-            },
+            { style: statusCardDanger },
             React.createElement("div", { style: { fontSize: "14px", fontWeight: "bold", color: "#ffffff", marginBottom: "6px" } }, context.title),
             React.createElement("div", { style: { fontSize: "13px", color: "#f48fb1", wordBreak: "break-word" as const } }, errorMessage)
           ),
