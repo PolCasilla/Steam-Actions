@@ -23,7 +23,7 @@ A Millennium plugin that adds a native-style **Actions** menu to Steam Store gam
 
 1. Download the latest `steam-actions.star` package from the [Releases](https://github.com/PolCasilla/Steam-Actions/releases) page.
 2. Place `steam-actions.star` inside your Steam plugins folder:
-   - **Windows**: `<Steam Install Folder>/plugins/`
+   - **Windows**: `<Steam Install Folder>/millenium/plugins/`
 3. Restart Steam or reload plugins via the Millennium menu.
 
 ---
