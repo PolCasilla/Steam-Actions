@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+bun.lock
+
+# Millennium & Starlight build artifacts
+.millennium/Dist/
+.millennium/lsp/
+.millennium/sourcemaps/
+*.star
+
+# Runtime data & temp downloads
+backend/data/downloads/
+backend/data/temp/
+
+# Environment & OS files
+.DS_Store
+Thumbs.db
+*.log
