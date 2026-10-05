@@ -1,51 +1,38 @@
-# Steam Actions Plugin
+# Steam Actions
 
-Adds a native-style **Actions** menu to Steam Store game pages and Steam Library game views.
+A Millennium plugin that adds a native-style **Actions** menu to Steam Store game pages and Steam Library game views.
 
 ---
 
-## Architecture Overview (For Developers)
+## Features
 
-Millennium plugins bridge three runtime environments:
+- **Store Integration**: Injects a native-styled **Actions** button directly into Steam Store pages.
+- **Library Integration**: Adds a 3-dots **Actions** button next to the game Manage controls, plus an option in the right-click game context menu.
+- **Game Management**: Quick actions to manage library items, add/remove games, view in store, and configure settings.
+- **Seamless & Lightweight**: Runs locally via Steam's built-in Millennium framework with LuaJIT backend and React UI.
 
-```
-┌────────────────────────────────┐       RPC (FFI)        ┌───────────────────────────────────┐
-│     Backend (LuaJIT)           │ ◄────────────────────► │      Frontend (React / Steam UI)  │
-│  - backend/main.lua            │                        │  - frontend/index.tsx (patches)   │
-│  - backend/rpc_functions.lua   │                        │  - frontend/modals.tsx (modals)   │
-│  - backend/installer.lua       │                        │  - frontend/context.ts (fibers)   │
-│  - backend/settings.lua        │                        └───────────────────────────────────┘
-│  - backend/paths.lua           │
-└────────────────────────────────┘
-                 ▲
-                 │ RPC (window.backend)
-                 ▼
-┌────────────────────────────────┐
-│     Webview (Store Preload)    │
-│  - webview/preload.ts          │
-│  - webview/application/        │
-│  - webview/ui/                 │
-└────────────────────────────────┘
-```
+---
 
-### 1. `backend/` (LuaJIT)
-Runs on the Steam client host process with direct filesystem and OS process capabilities.
-- **`main.lua`**: Plugin startup and lifecycle hooks (`on_load`).
-- **`rpc_functions.lua`**: Thin router exposing `@ffi` methods callable from frontend/webview.
-- **`paths.lua`**: Resolves Steam directory paths (`config/stplug-in/`, `depotcache/`).
-- **`settings.lua`**: Manages API key persistence, encryption/masking, and expiration.
-- **`installer.lua`**: Handles package downloads, zip extraction, and placing `.manifest`/`.lua` files.
+## Prerequisites
 
-### 2. `frontend/` (React / Steam Client UI)
-Injected into the Steam desktop client user interface.
-- **`index.tsx`**: Registers Steam desktop window observers (injects the 3-dots Actions button) and context menu patches.
-- **`modals.tsx`**: Clean React modals (`ActionsModal`, `AddToLibraryModal`, `RemoveFromLibraryModal`, `SettingsModal`).
-- **`context.ts`**: Safely extracts the active game context (`appId`, `title`) from React fiber nodes and DOM attributes.
-- **`ui/`**: Shared theme styles (`styles.ts`) and vector icons (`icons.tsx`).
+- [Millennium](https://steambrew.app/) (Steam Client Modding Framework)
 
-### 3. `webview/` (Store Browser Webview)
-Injected into the embedded Chromium webview when browsing the Steam Store.
-- Intercepts Store page navigations and injects native-styled action buttons into `.queue_actions_ctn`.
+---
+
+## Installation
+
+1. Download the latest `steam-actions.star` package from the [Releases](https://github.com/PolCasilla/Steam-Actions/releases) page.
+2. Place `steam-actions.star` inside your Steam plugins folder:
+   - **Windows**: `<Steam Install Folder>/plugins/`
+3. Restart Steam or reload plugins via the Millennium menu.
+
+---
+
+## Usage
+
+- **From Steam Store**: Browse to any game page on the Store to find the **Actions** button in the actions bar.
+- **From Steam Library**: Click the 3-dots **Actions** button on any game details header, or right-click any title in your library list and select **Actions**.
+- **Settings**: Open the Actions modal and select **Settings** to configure your API key.
 
 ---
 
@@ -53,16 +40,28 @@ Injected into the embedded Chromium webview when browsing the Steam Store.
 
 ### Prerequisites
 - [Bun](https://bun.sh/)
-- [Millennium](https://millennium.sh/) installed in Steam
+- [Millennium](https://steambrew.app/)
 
 ### Setup
 ```bash
 # Install dependencies
 bun install
 
-# Build & pack the plugin bundle (compiles directly to Steam plugins)
+# Pack release bundle (.star)
 bun run build
 
-# Watch mode for live development
+# Watch mode for active development
 bun run dev
 ```
+
+---
+
+## Credits & Acknowledgments
+
+- **[Millennium / SteamBrew](https://steambrew.app/)** – For the Steam client modding platform and the Starlight plugin toolchain.
+
+---
+
+## Disclaimer
+
+This project is an independent community plugin and is not affiliated with, endorsed by, or associated with Valve Corporation or Steam.
