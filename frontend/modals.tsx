@@ -26,6 +26,27 @@ async function callRpc<T = any>(method: string, params?: any): Promise<T> {
 // -------------------------------------------------------------
 // 1. Actions Modal
 // -------------------------------------------------------------
+function MenuItemButton({ label, onClick }: { label: string; onClick: () => void }) {
+  const [hover, setHover] = React.useState(false);
+  return React.createElement(
+    "div",
+    {
+      style: {
+        padding: "10px 16px",
+        cursor: "pointer",
+        borderRadius: "2px",
+        color: hover ? "#ffffff" : theme.text,
+        background: hover ? theme.cardBg : "transparent",
+        fontSize: "14px",
+      },
+      onMouseEnter: () => setHover(true),
+      onMouseLeave: () => setHover(false),
+      onClick,
+    },
+    label
+  );
+}
+
 function ActionsModalContent({
   context,
   closeModal,
@@ -33,24 +54,6 @@ function ActionsModalContent({
   context: GameContext;
   closeModal: () => void;
 }) {
-  const itemStyle = {
-    padding: "10px 16px",
-    cursor: "pointer",
-    borderRadius: "2px",
-    color: theme.text,
-    fontSize: "14px",
-    transition: "background 0.15s ease",
-  };
-
-  const onHover = (e: any) => {
-    e.currentTarget.style.background = theme.cardBg;
-    e.currentTarget.style.color = "#ffffff";
-  };
-  const onLeave = (e: any) => {
-    e.currentTarget.style.background = "transparent";
-    e.currentTarget.style.color = theme.text;
-  };
-
   return React.createElement(
     ModalRoot,
     { closeModal, bDisableBackgroundDismiss: false },
@@ -77,58 +80,34 @@ function ActionsModalContent({
         },
         `Actions: ${context.title}`
       ),
-      React.createElement(
-        "div",
-        {
-          style: itemStyle,
-          onMouseEnter: onHover,
-          onMouseLeave: onLeave,
-          onClick: () => {
-            closeModal();
-            openAddToLibraryModal(context);
-          },
+      React.createElement(MenuItemButton, {
+        label: "Add to Library",
+        onClick: () => {
+          closeModal();
+          openAddToLibraryModal(context);
         },
-        "Add to Library"
-      ),
-      React.createElement(
-        "div",
-        {
-          style: itemStyle,
-          onMouseEnter: onHover,
-          onMouseLeave: onLeave,
-          onClick: () => {
-            closeModal();
-            openRemoveFromLibraryModal(context);
-          },
+      }),
+      React.createElement(MenuItemButton, {
+        label: "Remove from Library",
+        onClick: () => {
+          closeModal();
+          openRemoveFromLibraryModal(context);
         },
-        "Remove from Library"
-      ),
-      React.createElement(
-        "div",
-        {
-          style: itemStyle,
-          onMouseEnter: onHover,
-          onMouseLeave: onLeave,
-          onClick: () => {
-            closeModal();
-            openSettingsModal();
-          },
+      }),
+      React.createElement(MenuItemButton, {
+        label: "Settings",
+        onClick: () => {
+          closeModal();
+          openSettingsModal();
         },
-        "Settings"
-      ),
+      }),
       React.createElement("div", {
         style: { height: "1px", background: theme.cardBg, margin: "8px 0" },
       }),
-      React.createElement(
-        "div",
-        {
-          style: itemStyle,
-          onMouseEnter: onHover,
-          onMouseLeave: onLeave,
-          onClick: closeModal,
-        },
-        "Close"
-      )
+      React.createElement(MenuItemButton, {
+        label: "Close",
+        onClick: closeModal,
+      })
     )
   );
 }

@@ -5,23 +5,15 @@ local paths = require("paths")
 local settings = require("settings")
 local installer = require("installer")
 
---- Resolves standard arguments whether passed as table, json string, or multiple arguments.
+--- Extracts appId and title from passed parameter.
 local function extract_game_args(param1, param2)
-    local app_id, title = nil, nil
     if type(param1) == "table" then
-        app_id = param1.app_id or param1.appId or param1.appid
-        title = param1.title or param1.name
-    elseif type(param1) == "string" and param1:sub(1, 1) == "{" then
-        local ok, parsed = pcall(cjson.decode, param1)
-        if ok and type(parsed) == "table" then
-            app_id = parsed.app_id or parsed.appId or parsed.appid
-            title = parsed.title or parsed.name
-        end
-    else
-        app_id = param1
-        if type(param2) == "string" then title = param2 end
+        local aid = param1.app_id or param1.appId or param1.appid
+        return aid and tostring(aid) or nil, param1.title or param1.name
     end
-    return app_id and tostring(app_id) or nil, title
+    local aid = param1 and tostring(param1)
+    local title = type(param2) == "string" and param2 or nil
+    return aid, title
 end
 
 ---@ffi

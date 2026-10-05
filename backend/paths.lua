@@ -21,7 +21,6 @@ function M.get_lua_dir()
             return dir
         end
 
-        -- Check 64-bit Program Files if steam_path returned x86 (or vice versa)
         local alt = base:match("Program Files %(x86%)") and base:gsub("Program Files %(x86%)", "Program Files")
                  or base:gsub("Program Files", "Program Files (x86)")
         local alt_dir = fs.join(alt, "config", "stplug-in")
@@ -31,19 +30,7 @@ function M.get_lua_dir()
         end
     end
 
-    -- Common drive fallbacks
-    for _, path in ipairs({
-        "C:/Program Files/Steam/config/stplug-in",
-        "C:/Program Files (x86)/Steam/config/stplug-in",
-        "D:/Steam/config/stplug-in",
-    }) do
-        if fs.exists(path) then
-            cached_lua_dir = path
-            return path
-        end
-    end
-
-    local fallback = (base and base ~= "") and fs.join(base, "config", "stplug-in") or "C:/Program Files/Steam/config/stplug-in"
+    local fallback = "C:/Program Files (x86)/Steam/config/stplug-in"
     cached_lua_dir = fallback
     return fallback
 end
@@ -68,17 +55,6 @@ function M.get_steam_root()
     if parent and fs.exists(parent) then
         cached_steam_dir = parent
         return parent
-    end
-
-    for _, path in ipairs({
-        "C:/Program Files (x86)/Steam",
-        "C:/Program Files/Steam",
-        "D:/Steam",
-    }) do
-        if fs.exists(path) then
-            cached_steam_dir = path
-            return path
-        end
     end
 
     cached_steam_dir = "C:/Program Files (x86)/Steam"

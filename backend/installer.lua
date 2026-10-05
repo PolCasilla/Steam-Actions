@@ -40,18 +40,13 @@ local function download_file(url, dest_path, api_key)
     return true, 200, "OK"
 end
 
---- Extracts zip archive using Windows native tar or PowerShell.
+--- Extracts zip archive using Windows native tar.
 local function extract_zip(zip_path, dest_dir)
     if not fs.exists(dest_dir) then pcall(fs.create_directories, dest_dir) end
     local win_zip = zip_path:gsub("/", "\\")
     local win_dest = dest_dir:gsub("/", "\\")
-
-    local ok_tar = os.execute(string.format('tar -xf "%s" -C "%s"', win_zip, win_dest))
-    if ok_tar == 0 or ok_tar == true then return true end
-
-    local cmd_ps = string.format('powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath \'%s\' -DestinationPath \'%s\' -Force"', win_zip, win_dest)
-    local ok_ps = os.execute(cmd_ps)
-    return (ok_ps == 0 or ok_ps == true)
+    local ok = os.execute(string.format('tar -xf "%s" -C "%s"', win_zip, win_dest))
+    return ok == 0 or ok == true
 end
 
 --- Adds a game package (.manifest + .lua) into Steam.
