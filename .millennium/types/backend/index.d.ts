@@ -7,12 +7,12 @@ declare const backend: {
     hasGameLua: (appid: string) => Promise<boolean>;
     /** backend/rpc_functions.lua:48 */
     validateApiKey: (api_key: string) => Promise<string>;
-    /** backend/rpc_functions.lua:85 */
+    /** backend/rpc_functions.lua:91 */
     getSettings: () => Promise<string>;
-    /** backend/rpc_functions.lua:92 */
+    /** backend/rpc_functions.lua:98 */
     clearSettings: () => Promise<string>;
-    /** backend/rpc_functions.lua:102 */
+    /** backend/rpc_functions.lua:108 */
     addToLibrary: (param1: unknown, param2: unknown) => Promise<string>;
-    /** backend/rpc_functions.lua:115 */
+    /** backend/rpc_functions.lua:121 */
     removeFromLibrary: (param1: unknown, param2: unknown) => Promise<string>;
 };

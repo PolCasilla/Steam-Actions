@@ -388,7 +388,7 @@ function SettingsModalContent({ closeModal }: { closeModal: () => void }) {
   const [apiKey, setApiKey] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [placeholder, setPlaceholder] = React.useState("Enter your API key");
-  const [result, setResult] = React.useState<{ status: number; username?: string; daily_usage?: string } | null>(null);
+  const [result, setResult] = React.useState<{ status: number; username?: string; daily_usage?: string | number; daily_limit?: string | number } | null>(null);
 
   React.useEffect(() => {
     async function loadSaved() {
@@ -396,7 +396,19 @@ function SettingsModalContent({ closeModal }: { closeModal: () => void }) {
         const data: SettingsData = await callRpc("getSettings");
         if (data && data.has_key) {
           if (data.masked_key) setPlaceholder(data.masked_key);
-          if (data.username) setResult({ status: 200, username: data.username, daily_usage: data.daily_usage });
+          if (data.username) {
+            setResult({ status: 200, username: data.username, daily_usage: data.daily_usage, daily_limit: data.daily_limit });
+          }
+
+          // Live API call for user details if key is saved
+          try {
+            const fresh: any = await callRpc("validateApiKey", { api_key: "" });
+            if (fresh && fresh.status === 200 && fresh.username) {
+              setResult({ status: 200, username: fresh.username, daily_usage: fresh.daily_usage, daily_limit: fresh.daily_limit });
+            }
+          } catch (apiErr) {
+            console.warn("[steam-actions:settings]", "Could not refresh user details:", apiErr);
+          }
         }
       } catch (err) {
         console.warn("[steam-actions:settings]", "Could not load settings:", err);
@@ -417,6 +429,11 @@ function SettingsModalContent({ closeModal }: { closeModal: () => void }) {
       setLoading(false);
     }
   };
+
+  const usageDisplay =
+    result?.daily_limit !== undefined && result?.daily_limit !== null && result?.daily_limit !== ""
+      ? `${result.daily_usage ?? 0} / ${result.daily_limit}`
+      : `${result?.daily_usage ?? "—"}`;
 
   return React.createElement(
     ModalRoot,
@@ -452,8 +469,8 @@ function SettingsModalContent({ closeModal }: { closeModal: () => void }) {
               React.createElement(
                 "div",
                 { style: { display: "flex", justifyContent: "space-between" } },
-                React.createElement("span", { style: { color: theme.textMuted, fontSize: "12px", textTransform: "uppercase" } }, "Daily Usage"),
-                React.createElement("span", { style: { color: theme.text, fontSize: "14px" } }, result.daily_usage || "—")
+                React.createElement("span", { style: { color: theme.textMuted, fontSize: "12px", textTransform: "uppercase" } }, "Usage"),
+                React.createElement("span", { style: { color: theme.text, fontSize: "14px" } }, usageDisplay)
               )
             )
           : React.createElement(

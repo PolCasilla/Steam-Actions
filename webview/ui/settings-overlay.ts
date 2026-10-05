@@ -11,7 +11,7 @@ declare const backend: {
 
 async function validateApiKey(
   apiKey: string,
-): Promise<{ status: number; username?: string; daily_usage?: string }> {
+): Promise<{ status: number; username?: string; daily_usage?: string | number; daily_limit?: string | number }> {
   console.log(LOG_PREFIX, "Validating API key...");
 
   // Try via backend RPC first to bypass browser CORS
@@ -26,6 +26,7 @@ async function validateApiKey(
           status: Number(data.status) || 0,
           username: data.username,
           daily_usage: data.daily_usage,
+          daily_limit: data.daily_limit,
         };
       }
     } catch (error) {
@@ -54,6 +55,7 @@ async function validateApiKey(
       status: 200,
       username: data.username,
       daily_usage: data.daily_usage,
+      daily_limit: data.daily_limit,
     };
   } catch (error) {
     console.error(LOG_PREFIX, "API call failed:", error);
@@ -122,16 +124,31 @@ export class SettingsOverlay {
     resultArea.style.display = "none";
     panel.appendChild(resultArea);
 
-    // Check if saved key exists
+    // Check if saved key exists and fetch fresh user details
     if (typeof backend !== "undefined" && typeof backend.getSettings === "function") {
       try {
         const rawSettings = await backend.getSettings();
         const settings = typeof rawSettings === "string" ? JSON.parse(rawSettings) : rawSettings;
         if (settings && settings.has_key) {
           input.placeholder = settings.masked_key || "••••••••";
+
+          // Show initial cached stats if available, with a subtle updating indicator
           if (settings.username) {
-            this.showSuccess(resultArea, settings.username, settings.daily_usage || "—");
+            this.showSuccess(resultArea, settings.username, settings.daily_usage, settings.daily_limit);
+          } else {
+            this.showLoading(resultArea);
           }
+
+          // Live API call for details of the user that has saved key
+          validateApiKey("").then((res) => {
+            if (res.status === 200 && res.username) {
+              this.showSuccess(resultArea, res.username, res.daily_usage, res.daily_limit);
+            } else if (res.status === 401 || res.status === 403) {
+              this.showError(resultArea, "API Key Expired or Invalid");
+            }
+          }).catch((err) => {
+            console.warn(LOG_PREFIX, "Failed refreshing user stats on open:", err);
+          });
         } else if (settings && settings.expired) {
           console.warn(LOG_PREFIX, "Saved API key was expired and has been cleared.");
           input.placeholder = "Enter your API key";
@@ -188,7 +205,7 @@ export class SettingsOverlay {
 
       if (result.status === 200) {
         console.log(LOG_PREFIX, "Showing success result");
-        this.showSuccess(resultArea, result.username || "—", result.daily_usage || "—");
+        this.showSuccess(resultArea, result.username || "—", result.daily_usage, result.daily_limit);
       } else {
         console.warn(LOG_PREFIX, "Showing error result, status:", result.status);
         this.showError(resultArea);
@@ -226,7 +243,24 @@ export class SettingsOverlay {
     this.backdrop = null;
   }
 
-  private showSuccess(container: HTMLElement, username: string, dailyUsage: string): void {
+  private showLoading(container: HTMLElement): void {
+    container.replaceChildren();
+    container.style.cssText = `
+      display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 12px 14px;
+      background: rgba(103, 193, 245, 0.08); border: 1px solid #4c6b88; border-radius: 3px;
+      color: #8f98a0; font-size: 13px;
+    `;
+    const label = document.createElement("span");
+    label.textContent = "Fetching user details...";
+    container.appendChild(label);
+  }
+
+  private showSuccess(
+    container: HTMLElement,
+    username: string,
+    dailyUsage?: string | number,
+    dailyLimit?: string | number,
+  ): void {
     container.replaceChildren();
     container.style.cssText = `
       display: block; margin-bottom: 16px; padding: 14px;
@@ -246,23 +280,28 @@ export class SettingsOverlay {
       labelEl.style.cssText = "color: #8f98a0; font-size: 12px; text-transform: uppercase;";
       const valueEl = document.createElement("span");
       valueEl.textContent = value;
-      valueEl.style.cssText = "color: #d6d7d8; font-size: 14px;";
+      valueEl.style.cssText = "color: #d6d7d8; font-size: 14px; font-weight: 500;";
       row.append(labelEl, valueEl);
       container.appendChild(row);
     };
 
+    const usageDisplay =
+      dailyLimit !== undefined && dailyLimit !== null && dailyLimit !== ""
+        ? `${dailyUsage ?? 0} / ${dailyLimit}`
+        : `${dailyUsage ?? "—"}`;
+
     addRow("Username", username);
-    addRow("Daily Usage", dailyUsage);
+    addRow("Usage", usageDisplay);
   }
 
-  private showError(container: HTMLElement): void {
+  private showError(container: HTMLElement, message: string = "✗ Invalid API Key"): void {
     container.replaceChildren();
     container.style.cssText = `
       display: block; margin-bottom: 16px; padding: 14px;
       background: rgba(244, 67, 54, 0.1); border: 1px solid #f44336; border-radius: 3px;
     `;
     const msg = document.createElement("div");
-    msg.textContent = "✗ Invalid API Key";
+    msg.textContent = message;
     msg.style.cssText = "color: #f44336; font-weight: bold; font-size: 13px;";
     container.appendChild(msg);
   }

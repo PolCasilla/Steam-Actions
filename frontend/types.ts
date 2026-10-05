@@ -8,7 +8,8 @@ export interface SettingsData {
   has_key: boolean;
   masked_key?: string;
   username?: string;
-  daily_usage?: string;
+  daily_usage?: string | number;
+  daily_limit?: string | number;
   expired?: boolean;
 }
 

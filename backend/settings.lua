@@ -78,6 +78,7 @@ function M.get_settings()
         masked_key = masked,
         username = data.username,
         daily_usage = data.daily_usage,
+        daily_limit = data.daily_limit,
         api_key_expires_at = data.api_key_expires_at,
     }
 end
@@ -88,6 +89,7 @@ function M.save_settings(api_key, stats)
         api_key = tostring(api_key),
         username = stats.username,
         daily_usage = stats.daily_usage,
+        daily_limit = stats.daily_limit,
         api_key_expires_at = stats.api_key_expires_at,
         expires_at_epoch = parse_expiration(stats.api_key_expires_at),
         saved_at = os.time(),

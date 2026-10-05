@@ -46,13 +46,18 @@ end
 ---@param api_key string
 ---@return string
 function validateApiKey(api_key)
-    if not api_key or api_key == "" then
+    local target_key = api_key
+    if not target_key or target_key == "" then
+        target_key = settings.get_active_api_key()
+    end
+
+    if not target_key or target_key == "" then
         return cjson.encode({ status = 400 })
     end
 
     local resp = m_http.get("https://hubcapmanifest.com/api/v1/user/stats", {
         headers = {
-            ["Authorization"] = "Bearer " .. tostring(api_key),
+            ["Authorization"] = "Bearer " .. tostring(target_key),
             ["Accept"] = "application/json",
         },
         timeout = 15,
@@ -69,12 +74,13 @@ function validateApiKey(api_key)
         if ok and type(dec) == "table" then parsed = dec end
     end
 
-    settings.save_settings(api_key, parsed)
+    settings.save_settings(target_key, parsed)
 
     return cjson.encode({
         status = 200,
         username = parsed.username,
         daily_usage = parsed.daily_usage,
+        daily_limit = parsed.daily_limit,
         api_key_expires_at = parsed.api_key_expires_at,
     })
 end
