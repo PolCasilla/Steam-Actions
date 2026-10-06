@@ -20,14 +20,6 @@ function M.get_lua_dir()
             cached_lua_dir = dir
             return dir
         end
-
-        local alt = base:match("Program Files %(x86%)") and base:gsub("Program Files %(x86%)", "Program Files")
-                 or base:gsub("Program Files", "Program Files (x86)")
-        local alt_dir = fs.join(alt, "config", "stplug-in")
-        if fs.exists(alt_dir) then
-            cached_lua_dir = alt_dir
-            return alt_dir
-        end
     end
 
     local fallback = "C:/Program Files (x86)/Steam/config/stplug-in"

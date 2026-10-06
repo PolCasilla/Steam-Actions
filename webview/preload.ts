@@ -6,27 +6,6 @@ import { RemoveFromLibraryOverlay } from "./ui/remove-from-library-overlay";
 import { NativeActionButton } from "./ui/native-action-button";
 import { SettingsOverlay } from "./ui/settings-overlay";
 
-// Set to true to show console logs in CEF DevTools, or false to hide/silence immediately
-const ENABLE_LOGS = true;
-
-function logInfo(...args: unknown[]): void {
-  if (ENABLE_LOGS) {
-    console.log(...args);
-  }
-}
-
-function logWarn(...args: unknown[]): void {
-  if (ENABLE_LOGS) {
-    console.warn(...args);
-  }
-}
-
-function logError(...args: unknown[]): void {
-  if (ENABLE_LOGS) {
-    console.error(...args);
-  }
-}
-
 declare const backend: {
   getInstalledAppIds?: () => Promise<string[]>;
   hasGameLua?: (appid: string) => Promise<boolean>;
@@ -43,84 +22,56 @@ interface SteamActionsWindow extends Window {
 const installedAppIds = new Set<string>();
 
 async function syncInstalledGames(): Promise<void> {
-  logInfo("[steam-actions:webview] syncInstalledGames() running...");
-  if (typeof backend === "undefined") {
-    logWarn("[steam-actions:webview] 'backend' global is not defined yet!");
-    return;
-  }
-  if (typeof backend.getInstalledAppIds !== "function") {
-    logWarn("[steam-actions:webview] 'backend.getInstalledAppIds' is not a function:", backend);
-    return;
-  }
+  if (typeof backend === "undefined" || typeof backend.getInstalledAppIds !== "function") return;
 
   try {
-    logInfo("[steam-actions:webview] Calling backend.getInstalledAppIds()...");
     const appIds = await backend.getInstalledAppIds();
-    logInfo("[steam-actions:webview] backend.getInstalledAppIds() returned:", appIds);
     if (Array.isArray(appIds)) {
       installedAppIds.clear();
-      for (const id of appIds) {
-        installedAppIds.add(String(id));
-      }
-      logInfo(`[steam-actions:webview] Cached ${installedAppIds.size} installed app IDs in memory.`);
+      for (const id of appIds) installedAppIds.add(String(id));
     }
   } catch (error) {
-    logError("[steam-actions:webview] Could not sync installed games from backend:", error);
+    console.error("[steam-actions:webview] Could not sync installed games:", error);
   }
 }
 
 async function checkGameLua(appId: string): Promise<boolean> {
-  logInfo(`[steam-actions:webview] Navigated to game: checking hasGameLua for appId ${appId}...`);
   if (typeof backend === "undefined" || typeof backend.hasGameLua !== "function") {
-    logWarn("[steam-actions:webview] backend.hasGameLua is unavailable!", typeof backend);
     return installedAppIds.has(appId);
   }
 
   try {
     const exists = await backend.hasGameLua(appId);
-    logInfo(`[steam-actions:webview] backend.hasGameLua('${appId}') result:`, exists);
-    if (exists) {
-      installedAppIds.add(appId);
-    } else {
-      installedAppIds.delete(appId);
-    }
+    if (exists) installedAppIds.add(appId);
+    else installedAppIds.delete(appId);
     return exists;
   } catch (error) {
-    logError(`[steam-actions:webview] Failed checking hasGameLua for appId ${appId}:`, error);
+    console.error(`[steam-actions:webview] Failed checking hasGameLua for ${appId}:`, error);
   }
   return installedAppIds.has(appId);
 }
 
 const settingsOverlay = new SettingsOverlay();
 const addToLibraryOverlay = new AddToLibraryOverlay((context) => {
-  logInfo(`[steam-actions:webview] Successfully added appId ${context.appId} to library; updating local cache.`);
   installedAppIds.add(context.appId);
 });
 const removeFromLibraryOverlay = new RemoveFromLibraryOverlay((context) => {
-  logInfo(`[steam-actions:webview] Successfully removed appId ${context.appId} from library; updating local cache.`);
   installedAppIds.delete(context.appId);
 });
 
 function resolveActions(context: GameContext): ActionItem[] {
   const isInstalled = installedAppIds.has(context.appId);
-  logInfo(`[steam-actions:webview] Resolving actions for appId ${context.appId} (isInstalled: ${isInstalled})`);
 
   const libraryAction: ActionItem = isInstalled
     ? {
         id: "remove-to-library",
         label: "Remove to Library",
-        onExecute: (ctx) => {
-          logInfo("[steam-actions:webview] Remove to Library clicked for", ctx);
-          removeFromLibraryOverlay.open(ctx);
-        },
+        onExecute: (ctx) => removeFromLibraryOverlay.open(ctx),
       }
     : {
         id: "add-to-library",
         label: "Add to Library",
-        onExecute: (ctx) => {
-          logInfo("[steam-actions:webview] Add to Library clicked for", ctx);
-          addToLibraryOverlay.open(ctx);
-        },
+        onExecute: (ctx) => addToLibraryOverlay.open(ctx),
       };
 
   return [
@@ -128,9 +79,7 @@ function resolveActions(context: GameContext): ActionItem[] {
     {
       id: "settings",
       label: "Settings",
-      onExecute: () => {
-        settingsOverlay.open();
-      },
+      onExecute: () => settingsOverlay.open(),
     },
   ];
 }
@@ -139,9 +88,6 @@ function resolveActions(context: GameContext): ActionItem[] {
  * Preload module injected into Steam browser views (Store, etc.).
  */
 export default async function main(): Promise<void> {
-  logInfo("%c[steam-actions:webview] main() loaded on: " + window.location.href, "color: #67c1f5; font-weight: bold;");
-  logInfo("[steam-actions:webview] Available backend RPC:", typeof backend !== "undefined" ? Object.keys(backend) : "backend is undefined");
-
   const steamWindow = window as SteamActionsWindow;
   steamWindow[CONTROLLER_KEY]?.stop();
 

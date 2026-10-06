@@ -1,7 +1,7 @@
 [plugin]
 id = "steam-actions"
 name = "Steam Actions"
-version = "1.0.2"
+version = "1.0.3"
 author = "Steam Actions"
 description = "Adds a native-style Actions menu to Steam Store and Library game pages."
 

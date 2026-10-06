@@ -1,6 +1,6 @@
 {
   "name": "steam-actions",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Adds a native-style Actions menu to Steam Store and Library game pages.",
   "scripts": {
     "dev": "./node_modules/.bin/starlight watch",

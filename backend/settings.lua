@@ -14,18 +14,10 @@ local function get_settings_file()
 end
 
 local function parse_expiration(val)
-    if not val then return nil end
     local num = tonumber(val)
-    if num then
-        return (num > 100000000000) and math.floor(num / 1000) or num
-    end
-    if type(val) == "string" then
-        local Y, M, D, h, m, s = val:match("(%d+)-(%d+)-(%d+)[T ](%d+):(%d+):(%d+)")
-        if Y then
-            return os.time({ year = tonumber(Y), month = tonumber(M), day = tonumber(D), hour = tonumber(h), min = tonumber(m), sec = tonumber(s) })
-        end
-    end
-    return nil
+    if num then return (num > 1e11) and math.floor(num / 1000) or num end
+    local Y, M, D, h, m, s = tostring(val or ""):match("(%d+)-(%d+)-(%d+)[T ](%d+):(%d+):(%d+)")
+    return Y and os.time({ year = tonumber(Y), month = tonumber(M), day = tonumber(D), hour = tonumber(h), min = tonumber(m), sec = tonumber(s) }) or nil
 end
 
 function M.get_active_api_key()

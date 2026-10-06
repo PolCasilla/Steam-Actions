@@ -12,14 +12,9 @@ declare const backend: {
 async function validateApiKey(
   apiKey: string,
 ): Promise<{ status: number; username?: string; daily_usage?: string | number; daily_limit?: string | number }> {
-  console.log(LOG_PREFIX, "Validating API key...");
-
-  // Try via backend RPC first to bypass browser CORS
   if (typeof backend !== "undefined" && typeof backend.validateApiKey === "function") {
     try {
-      console.log(LOG_PREFIX, "Routing validateApiKey via backend RPC...");
       const raw = await backend.validateApiKey(apiKey);
-      console.log(LOG_PREFIX, "Backend validateApiKey raw response:", raw);
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       if (data && typeof data === "object") {
         return {
@@ -33,34 +28,7 @@ async function validateApiKey(
       console.error(LOG_PREFIX, "Backend RPC validateApiKey failed:", error);
     }
   }
-
-  // Fallback to direct fetch
-  try {
-    const response = await fetch("https://hubcapmanifest.com/api/v1/user/stats", {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-    });
-
-    if (!response.ok) {
-      console.warn(LOG_PREFIX, "API returned non-200 status:", response.status);
-      return { status: response.status };
-    }
-
-    const data = await response.json();
-    console.log(LOG_PREFIX, "API validation successful, username:", data.username);
-    return {
-      status: 200,
-      username: data.username,
-      daily_usage: data.daily_usage,
-      daily_limit: data.daily_limit,
-    };
-  } catch (error) {
-    console.error(LOG_PREFIX, "API call failed:", error);
-    return { status: 0 };
-  }
+  return { status: 0 };
 }
 
 /**

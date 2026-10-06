@@ -5,15 +5,11 @@ local paths = require("paths")
 local settings = require("settings")
 local installer = require("installer")
 
---- Extracts appId and title from passed parameter.
 local function extract_game_args(param1, param2)
-    if type(param1) == "table" then
-        local aid = param1.app_id or param1.appId or param1.appid
-        return aid and tostring(aid) or nil, param1.title or param1.name
-    end
-    local aid = param1 and tostring(param1)
-    local title = type(param2) == "string" and param2 or nil
-    return aid, title
+    local is_tbl = type(param1) == "table"
+    local aid = is_tbl and (param1.app_id or param1.appId or param1.appid) or param1
+    local title = is_tbl and (param1.title or param1.name) or param2
+    return aid and tostring(aid) or nil, type(title) == "string" and title or nil
 end
 
 ---@ffi
