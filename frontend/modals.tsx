@@ -135,6 +135,7 @@ function AddToLibraryModalContent({
   closeModal: () => void;
 }) {
   const [state, setState] = React.useState<"loading" | "success" | "error">("loading");
+  const [result, setResult] = React.useState<RpcResult | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string>("");
 
   const executeAdd = React.useCallback(async () => {
@@ -146,6 +147,7 @@ function AddToLibraryModalContent({
         title: context.title,
       });
       if (data && data.success) {
+        setResult(data);
         setState("success");
         return;
       }
@@ -195,7 +197,21 @@ function AddToLibraryModalContent({
             { style: statusCardSuccess },
             React.createElement("div", { style: { fontSize: "14px", fontWeight: "bold", color: "#ffffff", marginBottom: "4px" } }, context.title),
             React.createElement("div", { style: { fontSize: "13px", color: "#c6d4df", marginBottom: "6px" } }, "This game is now added to your Steam library."),
-            React.createElement("div", { style: { fontSize: "12px", color: theme.textMuted } }, `App ID: ${context.appId}`)
+            React.createElement("div", { style: { fontSize: "12px", color: theme.textMuted, marginBottom: "8px" } }, `App ID: ${context.appId}`),
+            React.createElement(
+              "div",
+              {
+                style: {
+                  borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                  paddingTop: "8px",
+                  fontSize: "12px",
+                  color: "#c6d4df",
+                  lineHeight: "1.6",
+                },
+              },
+              React.createElement("div", null, `• ${result?.manifest_count ?? 0} manifest file(s) installed`),
+              React.createElement("div", null, `• ${result?.lua_count ?? 0} lua script installed`)
+            )
           ),
           React.createElement("button", { onClick: closeModal, style: btnPrimary }, "OK")
         ),

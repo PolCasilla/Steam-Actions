@@ -17,4 +17,7 @@ export interface RpcResult {
   success?: boolean;
   status?: number;
   message?: string;
+  manifest_count?: number;
+  lua_count?: number;
 }
+
