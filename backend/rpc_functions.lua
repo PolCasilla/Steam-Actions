@@ -4,6 +4,7 @@ local m_http = require("http")
 local paths = require("paths")
 local settings = require("settings")
 local installer = require("installer")
+local steam_status = require("steam_status")
 
 local function extract_game_args(param1, param2)
     local is_tbl = type(param1) == "table"
@@ -120,4 +121,16 @@ function removeFromLibrary(param1, param2)
         return cjson.encode({ success = false, status = 400, message = "Missing App ID." })
     end
     return cjson.encode(installer.remove_from_library(app_id, title))
+end
+
+---@ffi
+--- Returns Steam install and update-pending status for a game.
+---@param appid string
+---@return string
+function getGameStatus(appid)
+    local ok, result = pcall(steam_status.get_status, appid)
+    if not ok then
+        result = { ok = false, error = tostring(result) }
+    end
+    return cjson.encode(result)
 end
