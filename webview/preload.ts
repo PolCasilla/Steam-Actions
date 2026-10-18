@@ -5,12 +5,14 @@ import { AddToLibraryOverlay } from "./ui/add-to-library-overlay";
 import { RemoveFromLibraryOverlay } from "./ui/remove-from-library-overlay";
 import { NativeActionButton } from "./ui/native-action-button";
 import { SettingsOverlay } from "./ui/settings-overlay";
+import { GameStatusOverlay } from "./ui/game-status-overlay";
 
 declare const backend: {
   getInstalledAppIds?: () => Promise<string[]>;
   hasGameLua?: (appid: string) => Promise<boolean>;
   addToLibrary?: (appId: string, title?: string) => Promise<string>;
   removeFromLibrary?: (appId: string, title?: string) => Promise<string>;
+  getGameStatus?: (appid: string) => Promise<string>;
 };
 
 const CONTROLLER_KEY = "__steamActionsController__";
@@ -52,6 +54,7 @@ async function checkGameLua(appId: string): Promise<boolean> {
 }
 
 const settingsOverlay = new SettingsOverlay();
+const gameStatusOverlay = new GameStatusOverlay();
 const addToLibraryOverlay = new AddToLibraryOverlay((context) => {
   installedAppIds.add(context.appId);
 });
@@ -76,6 +79,11 @@ function resolveActions(context: GameContext): ActionItem[] {
 
   return [
     libraryAction,
+    {
+      id: "game-status",
+      label: "Game Status",
+      onExecute: (ctx) => gameStatusOverlay.open(ctx),
+    },
     {
       id: "settings",
       label: "Settings",
