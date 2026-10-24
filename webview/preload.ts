@@ -13,6 +13,10 @@ declare const backend: {
   addToLibrary?: (appId: string, title?: string) => Promise<string>;
   removeFromLibrary?: (appId: string, title?: string) => Promise<string>;
   getGameStatus?: (appid: string) => Promise<string>;
+  deployEmulator?: (appId: string) => Promise<string>;
+  restoreOriginal?: (appId: string) => Promise<string>;
+  exportEmulatorZip?: (appId: string, destPath?: string) => Promise<string>;
+  downloadEmulatorToolchain?: () => Promise<string>;
 };
 
 const CONTROLLER_KEY = "__steamActionsController__";
@@ -99,7 +103,6 @@ export default async function main(): Promise<void> {
   const steamWindow = window as SteamActionsWindow;
   steamWindow[CONTROLLER_KEY]?.stop();
 
-  // Initial sync of installed games from backend config/lua/
   await syncInstalledGames();
 
   const controller = new ActionsController(

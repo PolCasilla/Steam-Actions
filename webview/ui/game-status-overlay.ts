@@ -5,7 +5,28 @@ const LOG_PREFIX = "[steam-actions:game-status]";
 
 declare const backend: {
   getGameStatus?: (appid: string) => Promise<string>;
+  deployEmulator?: (appid: string) => Promise<string>;
+  restoreOriginal?: (appid: string) => Promise<string>;
+  exportEmulatorZip?: (appid: string, destPath?: string) => Promise<string>;
+  downloadEmulatorToolchain?: () => Promise<string>;
 };
+
+interface EmulatorStatus {
+  toolchain_ready: boolean;
+  missing_dlls?: string[];
+  is_cracked?: boolean;
+  needs_recrack?: boolean;
+  has_backup?: boolean;
+  crack_buildid?: number;
+  exe_path?: string;
+  exe_name?: string;
+  rel_dir?: string;
+  arch?: string;
+  is_unreal?: boolean;
+  steam_api_path?: string;
+  steam_api_exists?: boolean;
+  steam_api_is_emu?: boolean;
+}
 
 interface GameStatus {
   ok: boolean;
@@ -14,8 +35,12 @@ interface GameStatus {
   installed?: boolean;
   update_pending?: boolean;
   buildid?: number;
+  target_buildid?: number;
   last_updated?: number;
   state_flags?: number;
+  installdir?: string;
+  install_path?: string;
+  emu?: EmulatorStatus;
   error?: string;
 }
 
@@ -28,15 +53,15 @@ async function fetchGameStatus(appid: string): Promise<GameStatus> {
 }
 
 /**
- * Modal overlay that shows Steam's local install/update status for the current game.
- * Opens loading → success/error, following the same pattern as AddToLibraryOverlay.
+ * Unified modal overlay that shows Steam's local install/update status AND
+ * offline emulator crack status, complete with AV warnings and deployment controls.
  */
 export class GameStatusOverlay {
   private backdrop: HTMLElement | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
   public async open(context: GameContext): Promise<void> {
-    console.log(LOG_PREFIX, "Opening for:", context.appId);
+    console.log(LOG_PREFIX, "Opening unified dashboard for:", context.appId);
     this.close();
 
     const backdrop = document.createElement("div");
@@ -44,7 +69,7 @@ export class GameStatusOverlay {
     backdrop.style.cssText = `
       position: fixed; inset: 0; z-index: 2147483647;
       display: flex; align-items: center; justify-content: center;
-      background: rgba(0, 0, 0, 0.65);
+      background: rgba(0, 0, 0, 0.75);
       font-family: "Motiva Sans", Arial, Helvetica, sans-serif;
     `;
 
@@ -52,8 +77,8 @@ export class GameStatusOverlay {
     panel.style.cssText = `
       background: #1b2838; border: 1px solid #4c6b88; border-radius: 4px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.85);
-      padding: 28px 24px; min-width: 360px; max-width: 440px; color: #d6d7d8;
-      box-sizing: border-box; text-align: center;
+      padding: 24px; width: 480px; max-width: 90vw; color: #d6d7d8;
+      box-sizing: border-box; text-align: left; max-height: 85vh; overflow-y: auto;
     `;
 
     backdrop.appendChild(panel);
@@ -97,7 +122,7 @@ export class GameStatusOverlay {
     panel.replaceChildren();
 
     const spinnerWrap = document.createElement("div");
-    spinnerWrap.style.cssText = "margin: 8px auto 20px auto; width: 44px; height: 44px;";
+    spinnerWrap.style.cssText = "margin: 20px auto; width: 44px; height: 44px; text-align: center;";
     spinnerWrap.innerHTML = `
       <svg width="44" height="44" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" stroke="#67c1f5">
         <g fill="none" fill-rule="evenodd">
@@ -114,19 +139,14 @@ export class GameStatusOverlay {
     panel.appendChild(spinnerWrap);
 
     const title = document.createElement("div");
-    title.textContent = "Checking Game Status...";
-    title.style.cssText = "font-size: 18px; font-weight: bold; color: #67c1f5; margin-bottom: 8px;";
+    title.textContent = "Checking Game & Crack Status...";
+    title.style.cssText = "font-size: 16px; font-weight: bold; color: #67c1f5; text-align: center; margin-bottom: 8px;";
     panel.appendChild(title);
 
     const name = document.createElement("div");
     name.textContent = context.title;
-    name.style.cssText = "font-size: 14px; color: #ffffff; margin-bottom: 4px; word-break: break-word;";
+    name.style.cssText = "font-size: 13px; color: #ffffff; text-align: center;";
     panel.appendChild(name);
-
-    const appId = document.createElement("div");
-    appId.textContent = `App ID: ${context.appId}`;
-    appId.style.cssText = "font-size: 12px; color: #8f98a0;";
-    panel.appendChild(appId);
   }
 
   private renderStatus(panel: HTMLElement, context: GameContext, status: GameStatus): void {
@@ -134,130 +154,294 @@ export class GameStatusOverlay {
 
     const installed = status.installed ?? false;
     const updatePending = status.update_pending ?? false;
+    const emu = status.emu;
+    const isCracked = emu?.is_cracked ?? false;
 
-    const iconColor = installed ? "#4caf50" : "#8f98a0";
-    const iconPath = installed
-      ? `<polyline points="7 13 10 16 17 9"></polyline>`
-      : `<line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>`;
-
-    const iconWrap = document.createElement("div");
-    iconWrap.style.cssText = "margin: 4px auto 16px auto; width: 52px; height: 52px;";
-    iconWrap.innerHTML = `
-      <svg width="52" height="52" viewBox="0 0 24 24" fill="none"
-           stroke="${iconColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10" stroke="${iconColor}" fill="${iconColor}22"></circle>
-        ${iconPath}
-      </svg>
-    `;
-    panel.appendChild(iconWrap);
-
+    // Header Title
     const title = document.createElement("div");
-    title.textContent = installed ? "Game is Installed" : "Game Not Installed";
-    title.style.cssText = `font-size: 18px; font-weight: bold; color: ${iconColor}; margin-bottom: 12px;`;
+    title.textContent = "Game & Emulator Status";
+    title.style.cssText = "font-size: 18px; font-weight: bold; color: #67c1f5; margin-bottom: 4px;";
     panel.appendChild(title);
 
-    const card = document.createElement("div");
-    card.style.cssText = `
-      background: rgba(255,255,255,0.04); border: 1px solid #2a475e;
-      border-radius: 3px; padding: 14px; margin-bottom: 20px; text-align: left;
+    const sub = document.createElement("div");
+    sub.textContent = `${status.name ?? context.title} (App ID: ${context.appId})`;
+    sub.style.cssText = "font-size: 12px; color: #8f98a0; margin-bottom: 16px;";
+    panel.appendChild(sub);
+
+    // 1. Antivirus / Missing Toolchain Card (if flagged)
+    if (emu && !emu.toolchain_ready) {
+      const avCard = document.createElement("div");
+      avCard.style.cssText = `
+        background: rgba(255, 152, 0, 0.12); border: 1px solid rgba(255, 152, 0, 0.4);
+        border-radius: 4px; padding: 12px; margin-bottom: 16px; font-size: 12px; color: #ffb74d;
+      `;
+      avCard.innerHTML = `
+        <div style="font-weight: bold; font-size: 13px; margin-bottom: 4px;">⚠ Antivirus Alert: Emulator Files Missing / Quarantined</div>
+        <div style="margin-bottom: 8px; color: #d6d7d8;">Windows Defender often flags Steam emulators (steamclient64.dll) as false positives. Add an exclusion for the plugin data folder before downloading.</div>
+      `;
+
+      const btnRow = document.createElement("div");
+      btnRow.style.cssText = "display: flex; gap: 8px;";
+
+      const dlBtn = document.createElement("button");
+      dlBtn.textContent = "Re-download Emu Files";
+      dlBtn.style.cssText = `
+        padding: 5px 12px; border: none; border-radius: 2px;
+        background: #ff9800; color: #1b2838; font-weight: bold; font-size: 12px; cursor: pointer;
+      `;
+      dlBtn.addEventListener("click", async () => {
+        dlBtn.textContent = "Downloading...";
+        try {
+          if (backend.downloadEmulatorToolchain) {
+            await backend.downloadEmulatorToolchain();
+            const fresh = await fetchGameStatus(context.appId);
+            this.renderStatus(panel, context, fresh);
+          }
+        } catch {
+          dlBtn.textContent = "Download Failed";
+        }
+      });
+      btnRow.appendChild(dlBtn);
+      avCard.appendChild(btnRow);
+      panel.appendChild(avCard);
+    }
+
+    // 2. Steam Status Card
+    const steamCard = document.createElement("div");
+    steamCard.style.cssText = `
+      background: rgba(255,255,255,0.03); border: 1px solid #2a475e;
+      border-radius: 3px; padding: 12px; margin-bottom: 12px;
     `;
 
-    const rows: [string, string][] = [
-      ["Game", status.name ?? context.title],
-      ["App ID", context.appId],
-      ["Installed", installed ? "Yes" : "No"],
-      ["Update Pending", updatePending ? "Yes" : "No"],
+    const statusRows: [string, string, string?][] = [
+      ["Steam Installed", installed ? "Yes" : "No", installed ? "#4caf50" : "#f44336"],
+      ["Steam Updates", updatePending ? "Update Pending" : "Up to Date", updatePending ? "#ffc107" : "#4caf50"],
     ];
-    if (status.buildid) rows.push(["Build ID", String(status.buildid)]);
-    if (status.last_updated) {
-      rows.push(["Last Updated", new Date(status.last_updated * 1000).toLocaleDateString()]);
-    }
+    if (status.buildid) statusRows.push(["Current Build ID", String(status.buildid)]);
+    if (status.target_buildid) statusRows.push(["Target Build ID", String(status.target_buildid), "#ffc107"]);
+    if (status.installdir) statusRows.push(["Install Folder", status.installdir]);
 
-    for (const [label, value] of rows) {
+    for (const [lbl, val, col] of statusRows) {
       const row = document.createElement("div");
-      row.style.cssText = "display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px;";
-      const lEl = document.createElement("span");
-      lEl.textContent = label;
-      lEl.style.color = "#8f98a0";
-      const vEl = document.createElement("span");
-      vEl.textContent = value;
-      vEl.style.color = "#c6d4df";
-      row.append(lEl, vEl);
-      card.appendChild(row);
+      row.style.cssText = "display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px;";
+      const l = document.createElement("span");
+      l.textContent = lbl;
+      l.style.color = "#8f98a0";
+      const v = document.createElement("span");
+      v.textContent = val;
+      v.style.color = col || "#c6d4df";
+      v.style.fontWeight = col ? "bold" : "normal";
+      row.append(l, v);
+      steamCard.appendChild(row);
     }
 
+    // Warning if update pending
     if (updatePending) {
-      const badge = document.createElement("div");
-      badge.textContent = "Steam has an update ready for this game.";
-      badge.style.cssText = `
-        margin-top: 8px; padding: 6px 10px; border-radius: 3px; font-size: 12px;
+      const warnBox = document.createElement("div");
+      warnBox.textContent = "⚠ Steam has an update pending. Updating after applying a crack will wipe emulator files.";
+      warnBox.style.cssText = `
+        margin-top: 8px; padding: 6px 10px; border-radius: 2px; font-size: 11px;
         background: rgba(255, 193, 7, 0.12); border: 1px solid rgba(255, 193, 7, 0.3); color: #ffc107;
       `;
-      card.appendChild(badge);
+      steamCard.appendChild(warnBox);
     }
 
-    panel.appendChild(card);
+    // Warning if game not installed
+    if (!installed) {
+      const uninstalledBox = document.createElement("div");
+      uninstalledBox.textContent = "Game files are not on disk. Install via Steam before applying the emulator crack.";
+      uninstalledBox.style.cssText = `
+        margin-top: 8px; padding: 6px 10px; border-radius: 2px; font-size: 11px;
+        background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); color: #f48fb1;
+      `;
+      steamCard.appendChild(uninstalledBox);
+    }
 
-    const okBtn = document.createElement("button");
-    okBtn.textContent = "OK";
-    okBtn.style.cssText = `
-      padding: 9px 28px; border: none; border-radius: 3px;
-      font-size: 13px; font-family: inherit; font-weight: bold; cursor: pointer;
-      background: #67c1f5; color: #1b2838; transition: background 0.15s ease;
+    panel.appendChild(steamCard);
+
+    // 3. Emulator & Crack Card (if installed)
+    if (installed) {
+      const emuCard = document.createElement("div");
+      emuCard.style.cssText = `
+        background: rgba(255,255,255,0.03); border: 1px solid #2a475e;
+        border-radius: 3px; padding: 12px; margin-bottom: 16px;
+      `;
+
+      const crackStatusLabel = isCracked ? "Cracked (ColdLoader + gbe_fork)" : "Genuine Steam (Uncracked)";
+      const crackStatusColor = isCracked ? "#4caf50" : "#8f98a0";
+
+      const emuRows: [string, string, string?][] = [
+        ["Offline Crack", crackStatusLabel, crackStatusColor],
+        ["Target Binary", emu?.exe_name ? `${emu.exe_name} (${emu.arch || "x64"})` : "Not Found"],
+        ["Original steam_api", emu?.has_backup ? "Backed up (.bak)" : (emu?.steam_api_exists ? "Present" : "Missing")],
+      ];
+
+      for (const [lbl, val, col] of emuRows) {
+        const row = document.createElement("div");
+        row.style.cssText = "display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px;";
+        const l = document.createElement("span");
+        l.textContent = lbl;
+        l.style.color = "#8f98a0";
+        const v = document.createElement("span");
+        v.textContent = val;
+        v.style.color = col || "#c6d4df";
+        v.style.fontWeight = col ? "bold" : "normal";
+        row.append(l, v);
+        emuCard.appendChild(row);
+      }
+
+      if (emu?.needs_recrack) {
+        const recrackNotice = document.createElement("div");
+        recrackNotice.textContent = "Steam updated this game recently. Re-apply crack to update interface bindings.";
+        recrackNotice.style.cssText = `
+          margin-top: 8px; padding: 6px 10px; border-radius: 2px; font-size: 11px;
+          background: rgba(33, 150, 243, 0.12); border: 1px solid rgba(33, 150, 243, 0.3); color: #64b5f6;
+        `;
+        emuCard.appendChild(recrackNotice);
+      }
+
+      panel.appendChild(emuCard);
+    }
+
+    // 4. Action Buttons
+    const actionsRow = document.createElement("div");
+    actionsRow.style.cssText = "display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;";
+
+    const statusMsg = document.createElement("div");
+    statusMsg.style.cssText = "width: 100%; font-size: 12px; margin-bottom: 8px; display: none;";
+    panel.appendChild(statusMsg);
+
+    const showMsg = (txt: string, isErr = false) => {
+      statusMsg.style.display = "block";
+      statusMsg.style.color = isErr ? "#f44336" : "#4caf50";
+      statusMsg.textContent = txt;
+    };
+
+    if (installed) {
+      // Crack button
+      const crackBtn = document.createElement("button");
+      crackBtn.textContent = isCracked ? "Re-apply Crack" : "Apply Offline Crack";
+      crackBtn.style.cssText = `
+        padding: 8px 16px; border: none; border-radius: 2px; font-size: 12px; font-weight: bold;
+        background: #4caf50; color: #ffffff; cursor: pointer; transition: opacity 0.15s ease;
+      `;
+      crackBtn.addEventListener("click", async () => {
+        crackBtn.textContent = "Applying Crack...";
+        crackBtn.style.opacity = "0.7";
+        try {
+          if (backend.deployEmulator) {
+            const raw = await backend.deployEmulator(context.appId);
+            const res = typeof raw === "string" ? JSON.parse(raw) : raw;
+            if (res.success) {
+              showMsg("Offline crack applied successfully! Original files backed up as .bak.");
+              const fresh = await fetchGameStatus(context.appId);
+              this.renderStatus(panel, context, fresh);
+            } else {
+              showMsg(res.message || "Failed to apply crack.", true);
+              crackBtn.textContent = isCracked ? "Re-apply Crack" : "Apply Offline Crack";
+              crackBtn.style.opacity = "1";
+            }
+          }
+        } catch (e: any) {
+          showMsg(e.message || "Deploy error", true);
+          crackBtn.textContent = isCracked ? "Re-apply Crack" : "Apply Offline Crack";
+          crackBtn.style.opacity = "1";
+        }
+      });
+      actionsRow.appendChild(crackBtn);
+
+      // Restore button (if cracked or backup exists)
+      if (isCracked || emu?.has_backup) {
+        const restoreBtn = document.createElement("button");
+        restoreBtn.textContent = "Restore Original";
+        restoreBtn.style.cssText = `
+          padding: 8px 14px; border: none; border-radius: 2px; font-size: 12px; font-weight: bold;
+          background: #f44336; color: #ffffff; cursor: pointer;
+        `;
+        restoreBtn.addEventListener("click", async () => {
+          restoreBtn.textContent = "Restoring...";
+          try {
+            if (backend.restoreOriginal) {
+              const raw = await backend.restoreOriginal(context.appId);
+              const res = typeof raw === "string" ? JSON.parse(raw) : raw;
+              if (res.success) {
+                showMsg("Original files restored and crack removed.");
+                const fresh = await fetchGameStatus(context.appId);
+                this.renderStatus(panel, context, fresh);
+              } else {
+                showMsg(res.message || "Restore failed", true);
+              }
+            }
+          } catch (e: any) {
+            showMsg(e.message || "Restore error", true);
+          }
+        });
+        actionsRow.appendChild(restoreBtn);
+      }
+
+      // Export ZIP button
+      const zipBtn = document.createElement("button");
+      zipBtn.textContent = "Export ZIP";
+      zipBtn.style.cssText = `
+        padding: 8px 14px; border: none; border-radius: 2px; font-size: 12px;
+        background: #2a475e; color: #67c1f5; cursor: pointer;
+      `;
+      zipBtn.addEventListener("click", async () => {
+        zipBtn.textContent = "Exporting...";
+        try {
+          if (backend.exportEmulatorZip) {
+            const raw = await backend.exportEmulatorZip(context.appId);
+            const res = typeof raw === "string" ? JSON.parse(raw) : raw;
+            if (res.success) {
+              showMsg(`Crack ZIP created: ${res.zip_path || "in downloads folder"}`);
+            } else {
+              showMsg(res.message || "Export failed", true);
+            }
+          }
+        } catch (e: any) {
+          showMsg(e.message || "Export error", true);
+        } finally {
+          zipBtn.textContent = "Export ZIP";
+        }
+      });
+      actionsRow.appendChild(zipBtn);
+    }
+
+    // Close button
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "Close";
+    closeBtn.style.cssText = `
+      padding: 8px 16px; border: none; border-radius: 2px; font-size: 12px;
+      background: #2a475e; color: #d6d7d8; cursor: pointer;
     `;
-    okBtn.addEventListener("mouseenter", () => { okBtn.style.background = "#8ed4f8"; });
-    okBtn.addEventListener("mouseleave", () => { okBtn.style.background = "#67c1f5"; });
-    okBtn.addEventListener("click", () => this.close());
-    panel.appendChild(okBtn);
+    closeBtn.addEventListener("click", () => this.close());
+    actionsRow.appendChild(closeBtn);
+
+    panel.appendChild(actionsRow);
   }
 
   private renderError(panel: HTMLElement, context: GameContext, errorMessage: string): void {
     panel.replaceChildren();
 
-    const iconWrap = document.createElement("div");
-    iconWrap.style.cssText = "margin: 4px auto 16px auto; width: 52px; height: 52px;";
-    iconWrap.innerHTML = `
-      <svg width="52" height="52" viewBox="0 0 24 24" fill="none"
-           stroke="#f44336" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10" stroke="#f44336" fill="rgba(244,67,54,0.15)"></circle>
-        <line x1="15" y1="9" x2="9" y2="15"></line>
-        <line x1="9" y1="9" x2="15" y2="15"></line>
-      </svg>
-    `;
-    panel.appendChild(iconWrap);
-
     const title = document.createElement("div");
-    title.textContent = "Could Not Get Game Status";
-    title.style.cssText = "font-size: 18px; font-weight: bold; color: #f44336; margin-bottom: 12px;";
+    title.textContent = "Could Not Get Status";
+    title.style.cssText = "font-size: 16px; font-weight: bold; color: #f44336; margin-bottom: 8px;";
     panel.appendChild(title);
 
     const errorCard = document.createElement("div");
     errorCard.style.cssText = `
       background: rgba(244,67,54,0.08); border: 1px solid rgba(244,67,54,0.3);
-      border-radius: 3px; padding: 14px; margin-bottom: 20px; text-align: left;
+      border-radius: 3px; padding: 12px; margin-bottom: 16px; font-size: 13px; color: #f48fb1;
     `;
-
-    const gameEl = document.createElement("div");
-    gameEl.textContent = context.title;
-    gameEl.style.cssText = "font-size: 14px; font-weight: bold; color: #ffffff; margin-bottom: 6px; word-break: break-word;";
-    errorCard.appendChild(gameEl);
-
-    const msgEl = document.createElement("div");
-    msgEl.textContent = errorMessage;
-    msgEl.style.cssText = "font-size: 13px; color: #f48fb1; word-break: break-word;";
-    errorCard.appendChild(msgEl);
-
+    errorCard.textContent = errorMessage;
     panel.appendChild(errorCard);
 
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "Close";
     closeBtn.style.cssText = `
-      padding: 8px 20px; border: none; border-radius: 3px;
-      font-size: 13px; font-family: inherit; cursor: pointer;
-      background: #2a475e; color: #d6d7d8; transition: background 0.15s ease;
+      padding: 8px 18px; border: none; border-radius: 2px;
+      background: #2a475e; color: #d6d7d8; cursor: pointer;
     `;
-    closeBtn.addEventListener("mouseenter", () => { closeBtn.style.background = "#3d6c8e"; });
-    closeBtn.addEventListener("mouseleave", () => { closeBtn.style.background = "#2a475e"; });
     closeBtn.addEventListener("click", () => this.close());
     panel.appendChild(closeBtn);
   }
