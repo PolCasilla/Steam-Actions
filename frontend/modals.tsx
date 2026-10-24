@@ -81,6 +81,13 @@ function ActionsModalContent({
         `Actions: ${context.title}`
       ),
       React.createElement(MenuItemButton, {
+        label: "Game Status",
+        onClick: () => {
+          closeModal();
+          openGameStatusModal(context);
+        },
+      }),
+      React.createElement(MenuItemButton, {
         label: "Add to Library",
         onClick: () => {
           closeModal();
@@ -120,7 +127,7 @@ export function openActionsModal(context: GameContext): void {
       closeModal: () => modalHandle?.Close?.(),
     }),
     undefined,
-    { strTitle: "Game Actions", popupWidth: 400, popupHeight: 280, bForcePopOut: false }
+    { strTitle: "Game Actions", popupWidth: 400, popupHeight: 320, bForcePopOut: false }
   );
 }
 
@@ -416,7 +423,6 @@ function SettingsModalContent({ closeModal }: { closeModal: () => void }) {
             setResult({ status: 200, username: data.username, daily_usage: data.daily_usage, daily_limit: data.daily_limit });
           }
 
-          // Live API call for user details if key is saved
           try {
             const fresh: any = await callRpc("validateApiKey", { api_key: "" });
             if (fresh && fresh.status === 200 && fresh.username) {
@@ -510,5 +516,288 @@ export function openSettingsModal(): void {
     React.createElement(SettingsModalContent, { closeModal: () => modalHandle?.Close?.() }),
     undefined,
     { strTitle: "Settings", popupWidth: 440, popupHeight: 400, bForcePopOut: false }
+  );
+}
+
+// -------------------------------------------------------------
+// 5. Game Status & Offline Emulator Modal
+// -------------------------------------------------------------
+function GameStatusModalContent({
+  context,
+  closeModal,
+}: {
+  context: GameContext;
+  closeModal: () => void;
+}) {
+  const [loading, setLoading] = React.useState(true);
+  const [status, setStatus] = React.useState<any>(null);
+  const [actionLoading, setActionLoading] = React.useState<string | null>(null);
+  const [message, setMessage] = React.useState<{ text: string; isError: boolean } | null>(null);
+
+  const refreshStatus = React.useCallback(async () => {
+    try {
+      const data = await callRpc("getGameStatus", context.appId);
+      setStatus(data);
+    } catch (e: any) {
+      setMessage({ text: e.message || "Failed to load status", isError: true });
+    } finally {
+      setLoading(false);
+    }
+  }, [context.appId]);
+
+  React.useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
+
+  const handleDeploy = async () => {
+    setActionLoading("deploy");
+    setMessage(null);
+    try {
+      const res = await callRpc("deployEmulator", context.appId);
+      if (res?.success) {
+        setMessage({ text: "Offline crack applied successfully! Original files backed up as .bak.", isError: false });
+        await refreshStatus();
+      } else {
+        setMessage({ text: res?.message || "Failed to apply crack.", isError: true });
+      }
+    } catch (e: any) {
+      setMessage({ text: e.message || "Deploy error", isError: true });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRestore = async () => {
+    setActionLoading("restore");
+    setMessage(null);
+    try {
+      const res = await callRpc("restoreOriginal", context.appId);
+      if (res?.success) {
+        setMessage({ text: "Original files restored and emulator crack removed.", isError: false });
+        await refreshStatus();
+      } else {
+        setMessage({ text: res?.message || "Failed to restore original files.", isError: true });
+      }
+    } catch (e: any) {
+      setMessage({ text: e.message || "Restore error", isError: true });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleExport = async () => {
+    setActionLoading("export");
+    setMessage(null);
+    try {
+      const res = await callRpc("exportEmulatorZip", context.appId);
+      if (res?.success) {
+        setMessage({ text: `Standalone crack ZIP created: ${res.zip_path || "in downloads folder"}`, isError: false });
+      } else {
+        setMessage({ text: res?.message || "Failed to export ZIP.", isError: true });
+      }
+    } catch (e: any) {
+      setMessage({ text: e.message || "Export error", isError: true });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDownloadToolchain = async () => {
+    setActionLoading("toolchain");
+    setMessage(null);
+    try {
+      await callRpc("downloadEmulatorToolchain");
+      await refreshStatus();
+    } catch (e: any) {
+      setMessage({ text: "Failed to download toolchain files.", isError: true });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  if (loading) {
+    return React.createElement(
+      ModalRoot,
+      { closeModal, bDisableBackgroundDismiss: false },
+      React.createElement(
+        "div",
+        { style: modalContainerStyle },
+        React.createElement(SpinnerIcon),
+        React.createElement("div", { style: { fontSize: "16px", color: theme.primary, marginTop: "12px" } }, "Checking Game & Crack Status..."),
+        React.createElement("div", { style: { fontSize: "13px", color: theme.textMuted, marginTop: "4px" } }, context.title)
+      )
+    );
+  }
+
+  const installed = status?.installed ?? false;
+  const updatePending = status?.update_pending ?? false;
+  const emu = status?.emu;
+  const isCracked = emu?.is_cracked ?? false;
+
+  return React.createElement(
+    ModalRoot,
+    { closeModal, bDisableBackgroundDismiss: false },
+    React.createElement(
+      "div",
+      { style: { ...modalContainerStyle, textAlign: "left" as const, maxWidth: "480px" } },
+      React.createElement("div", { style: { fontSize: "18px", fontWeight: "bold", color: theme.primary, marginBottom: "4px" } }, "Game & Emulator Status"),
+      React.createElement("div", { style: { fontSize: "12px", color: theme.textMuted, marginBottom: "16px" } }, `${status?.name || context.title} (App ID: ${context.appId})`),
+
+      // AV Alert Card
+      emu && !emu.toolchain_ready &&
+        React.createElement(
+          "div",
+          {
+            style: {
+              background: "rgba(255, 152, 0, 0.12)",
+              border: "1px solid rgba(255, 152, 0, 0.4)",
+              borderRadius: "3px",
+              padding: "12px",
+              marginBottom: "14px",
+              fontSize: "12px",
+              color: "#ffb74d",
+            },
+          },
+          React.createElement("div", { style: { fontWeight: "bold", marginBottom: "4px" } }, "⚠ Antivirus Alert: Emulator Files Missing / Quarantined"),
+          React.createElement("div", { style: { color: theme.text, marginBottom: "8px" } }, "Windows Defender routinely flags Steam emulator DLLs. Add an exclusion for the plugin data directory."),
+          React.createElement(
+            "button",
+            {
+              onClick: handleDownloadToolchain,
+              disabled: actionLoading === "toolchain",
+              style: { ...btnBase, padding: "5px 12px", background: "#ff9800", color: "#1b2838", fontWeight: "bold" },
+            },
+            actionLoading === "toolchain" ? "Downloading..." : "Re-download Emu Files"
+          )
+        ),
+
+      // Steam Status Card
+      React.createElement(
+        "div",
+        {
+          style: {
+            background: "rgba(255, 255, 255, 0.03)",
+            border: `1px solid ${theme.border}`,
+            borderRadius: "3px",
+            padding: "12px",
+            marginBottom: "12px",
+            fontSize: "12px",
+          },
+        },
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "4px" } },
+          React.createElement("span", { style: { color: theme.textMuted } }, "Steam Installed"),
+          React.createElement("span", { style: { color: installed ? theme.success : theme.danger, fontWeight: "bold" } }, installed ? "Yes" : "No")
+        ),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "4px" } },
+          React.createElement("span", { style: { color: theme.textMuted } }, "Steam Updates"),
+          React.createElement("span", { style: { color: updatePending ? "#ffc107" : theme.success, fontWeight: "bold" } }, updatePending ? "Update Pending" : "Up to Date")
+        ),
+        status?.buildid && React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "4px" } },
+          React.createElement("span", { style: { color: theme.textMuted } }, "Build ID"),
+          React.createElement("span", { style: { color: theme.text } }, String(status.buildid))
+        ),
+        status?.target_buildid && React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "4px" } },
+          React.createElement("span", { style: { color: theme.textMuted } }, "Target Build ID"),
+          React.createElement("span", { style: { color: "#ffc107", fontWeight: "bold" } }, String(status.target_buildid))
+        ),
+        updatePending && React.createElement(
+          "div",
+          { style: { marginTop: "8px", padding: "6px 8px", background: "rgba(255, 193, 7, 0.12)", border: "1px solid rgba(255, 193, 7, 0.3)", borderRadius: "2px", color: "#ffc107", fontSize: "11px" } },
+          "⚠ Steam has an update pending. Cracking now risks being wiped when Steam updates."
+        ),
+        !installed && React.createElement(
+          "div",
+          { style: { marginTop: "8px", padding: "6px 8px", background: "rgba(244, 67, 54, 0.1)", border: `1px solid rgba(244, 67, 54, 0.3)`, borderRadius: "2px", color: "#f48fb1", fontSize: "11px" } },
+          "Game files are not on disk. Install via Steam before applying the emulator crack."
+        )
+      ),
+
+      // Emulator Status Card
+      installed && React.createElement(
+        "div",
+        {
+          style: {
+            background: "rgba(255, 255, 255, 0.03)",
+            border: `1px solid ${theme.border}`,
+            borderRadius: "3px",
+            padding: "12px",
+            marginBottom: "16px",
+            fontSize: "12px",
+          },
+        },
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "4px" } },
+          React.createElement("span", { style: { color: theme.textMuted } }, "Offline Crack"),
+          React.createElement("span", { style: { color: isCracked ? theme.success : theme.textMuted, fontWeight: "bold" } }, isCracked ? "Cracked (ColdLoader + gbe)" : "Genuine Steam")
+        ),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "4px" } },
+          React.createElement("span", { style: { color: theme.textMuted } }, "Target Binary"),
+          React.createElement("span", { style: { color: theme.text } }, emu?.exe_name ? `${emu.exe_name} (${emu.arch || "x64"})` : "Not Found")
+        ),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "4px" } },
+          React.createElement("span", { style: { color: theme.textMuted } }, "Original steam_api"),
+          React.createElement("span", { style: { color: emu?.has_backup ? theme.success : (emu?.steam_api_exists ? theme.text : theme.danger) } },
+            emu?.has_backup ? "Backed up (.bak)" : (emu?.steam_api_exists ? "Present" : "Missing")
+          )
+        ),
+        emu?.needs_recrack && React.createElement(
+          "div",
+          { style: { marginTop: "8px", padding: "6px 8px", background: "rgba(33, 150, 243, 0.12)", border: "1px solid rgba(33, 150, 243, 0.3)", borderRadius: "2px", color: "#64b5f6", fontSize: "11px" } },
+          "Steam updated this game recently. Re-apply crack to update interface bindings."
+        )
+      ),
+
+      // Status/Error Message
+      message && React.createElement(
+        "div",
+        { style: { fontSize: "12px", color: message.isError ? theme.danger : theme.success, marginBottom: "12px" } },
+        message.text
+      ),
+
+      // Buttons
+      React.createElement(
+        "div",
+        { style: { display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" as const } },
+        installed && React.createElement(
+          "button",
+          {
+            onClick: handleDeploy,
+            disabled: actionLoading !== null,
+            style: { ...btnBase, background: theme.success, color: "#ffffff", fontWeight: "bold", opacity: actionLoading ? 0.6 : 1 },
+          },
+          actionLoading === "deploy" ? "Applying..." : (isCracked ? "Re-apply Crack" : "Apply Offline Crack")
+        ),
+        installed && (isCracked || emu?.has_backup) && React.createElement(
+          "button",
+          {
+            onClick: handleRestore,
+            disabled: actionLoading !== null,
+            style: { ...btnDanger, opacity: actionLoading ? 0.6 : 1 },
+          },
+          actionLoading === "restore" ? "Restoring..." : "Restore Original"
+        ),
+        installed && React.createElement(
+          "button",
+          {
+            onClick: handleExport,
+            disabled: actionLoading !== null,
+            style: { ...btnSecondary, color: theme.primary, opacity: actionLoading ? 0.6 : 1 },
+          },
+          actionLoading === "export" ? "Exporting..." : "Export ZIP"
+        ),
+        React.createElement("button", { onClick: closeModal, style: btnSecondary }, "Close")
+      )
+    )
+  );
+}
+
+export function openGameStatusModal(context: GameContext): void {
+  let modalHandle: any;
+  modalHandle = showModal(
+    React.createElement(GameStatusModalContent, {
+      context,
+      closeModal: () => modalHandle?.Close?.(),
+    }),
+    undefined,
+    { strTitle: "Game Status", popupWidth: 480, popupHeight: 460, bForcePopOut: false }
   );
 }
