@@ -51,7 +51,7 @@ local function library_folders()
     return folders
 end
 
--- Returns { ok, appid, installed, update_pending, name?, buildid, last_updated, state_flags }
+-- Returns { ok, appid, installed, update_pending, name?, buildid, target_buildid?, last_updated, state_flags, installdir?, install_path? }
 -- or { ok = false, error = "..." } on a bad appid.
 -- When no manifest is found: installed = false, update_pending = false.
 function M.get_status(appid)
@@ -70,6 +70,11 @@ function M.get_status(appid)
                 local flags  = tonumber(s.stateflags)   or 0
                 local buildid = tonumber(s.buildid)      or 0
                 local target  = tonumber(s.targetbuildid) or 0
+                local installdir = s.installdir
+                local install_path = nil
+                if installdir and installdir ~= "" then
+                    install_path = normalize(folder .. "/steamapps/common/" .. installdir)
+                end
                 return {
                     ok            = true,
                     appid         = appid,
@@ -78,8 +83,11 @@ function M.get_status(appid)
                     update_pending = has_flag(flags, FLAG_UPDATE_REQUIRED)
                                     or (target ~= 0 and target ~= buildid),
                     buildid       = buildid,
+                    target_buildid = target ~= 0 and target or nil,
                     last_updated  = tonumber(s.lastupdated) or 0,
                     state_flags   = flags,
+                    installdir    = installdir,
+                    install_path  = install_path,
                 }
             end
         end
