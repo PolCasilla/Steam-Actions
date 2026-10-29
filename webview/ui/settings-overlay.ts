@@ -1,3 +1,5 @@
+import { makeFocusable, refocusActionTarget, trapModalFocus, type ModalTrap } from "./focusable";
+
 const OVERLAY_ID = "steam-actions-settings-overlay";
 const LOG_PREFIX = "[steam-actions:settings]";
 
@@ -36,14 +38,17 @@ async function validateApiKey(
  */
 export class SettingsOverlay {
   private backdrop: HTMLElement | null = null;
-  private keyHandler: ((e: KeyboardEvent) => void) | null = null;
+  private modalTrap: ModalTrap | null = null;
 
-  public async open(): Promise<void> {
+  public open(): void {
     console.log(LOG_PREFIX, "Opening settings overlay");
-    this.close();
+    this.close(false);
 
     const backdrop = document.createElement("div");
     backdrop.id = OVERLAY_ID;
+    backdrop.setAttribute("role", "dialog");
+    backdrop.setAttribute("aria-modal", "true");
+    backdrop.setAttribute("data-panel", '{"flow-children":"column","autoFocus":true}');
     backdrop.style.cssText = `
       position: fixed; inset: 0; z-index: 2147483647;
       display: flex; align-items: center; justify-content: center;
@@ -52,6 +57,7 @@ export class SettingsOverlay {
     `;
 
     const panel = document.createElement("div");
+    panel.setAttribute("data-panel", '{"flow-children":"column"}');
     panel.style.cssText = `
       background: #1b2838; border: 1px solid #4c6b88; border-radius: 4px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
@@ -79,12 +85,29 @@ export class SettingsOverlay {
     input.placeholder = "Enter your API key";
     input.style.cssText = `
       width: 100%; padding: 10px 12px; background: #2a475e;
-      border: 1px solid #4c6b88; border-radius: 3px;
+      border: 2px solid #4c6b88; border-radius: 4px;
       color: #d6d7d8; font-size: 14px; font-family: inherit;
       outline: none; box-sizing: border-box; margin-bottom: 16px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     `;
-    input.addEventListener("focus", () => { input.style.borderColor = "#67c1f5"; });
-    input.addEventListener("blur", () => { input.style.borderColor = "#4c6b88"; });
+    makeFocusable(input, {
+      baseBg: "#2a475e",
+      hoverBg: "#325672",
+      borderColor: "#4c6b88",
+      focusBorderColor: "#67c1f5",
+    });
+    input.addEventListener("focus", () => {
+      const win = typeof window !== "undefined" ? (window as any) : null;
+      if (win && typeof win.GPShowVirtualKeyboard === "function") {
+        try { win.GPShowVirtualKeyboard(true); } catch {}
+      }
+    });
+    input.addEventListener("blur", () => {
+      const win = typeof window !== "undefined" ? (window as any) : null;
+      if (win && typeof win.GPShowVirtualKeyboard === "function") {
+        try { win.GPShowVirtualKeyboard(false); } catch {}
+      }
+    });
     panel.appendChild(input);
 
     // Result area
@@ -92,67 +115,41 @@ export class SettingsOverlay {
     resultArea.style.display = "none";
     panel.appendChild(resultArea);
 
-    // Check if saved key exists and fetch fresh user details
-    if (typeof backend !== "undefined" && typeof backend.getSettings === "function") {
-      try {
-        const rawSettings = await backend.getSettings();
-        const settings = typeof rawSettings === "string" ? JSON.parse(rawSettings) : rawSettings;
-        if (settings && settings.has_key) {
-          input.placeholder = settings.masked_key || "••••••••";
-
-          // Show initial cached stats if available, with a subtle updating indicator
-          if (settings.username) {
-            this.showSuccess(resultArea, settings.username, settings.daily_usage, settings.daily_limit);
-          } else {
-            this.showLoading(resultArea);
-          }
-
-          // Live API call for details of the user that has saved key
-          validateApiKey("").then((res) => {
-            if (res.status === 200 && res.username) {
-              this.showSuccess(resultArea, res.username, res.daily_usage, res.daily_limit);
-            } else if (res.status === 401 || res.status === 403) {
-              this.showError(resultArea, "API Key Expired or Invalid");
-            }
-          }).catch((err) => {
-            console.warn(LOG_PREFIX, "Failed refreshing user stats on open:", err);
-          });
-        } else if (settings && settings.expired) {
-          console.warn(LOG_PREFIX, "Saved API key was expired and has been cleared.");
-          input.placeholder = "Enter your API key";
-          resultArea.style.display = "none";
-        }
-      } catch (err) {
-        console.warn(LOG_PREFIX, "Could not fetch existing settings:", err);
-      }
-    }
-
     // Buttons
     const buttonRow = document.createElement("div");
+    buttonRow.setAttribute("data-panel", '{"flow-children":"row"}');
     buttonRow.style.cssText = "display: flex; gap: 10px; justify-content: flex-end;";
 
-    const makeBtn = (text: string, primary: boolean): HTMLButtonElement => {
+    const makeBtn = (text: string, primary: boolean, autoFocus = false): HTMLButtonElement => {
       const btn = document.createElement("button");
+      btn.type = "button";
       btn.textContent = text;
       const bg = primary ? "#67c1f5" : "#2a475e";
       const bgHover = primary ? "#8ed4f8" : "#3d6c8e";
       btn.style.cssText = `
-        padding: 8px 20px; border: none; border-radius: 3px;
+        padding: 8px 20px; border: 2px solid transparent; border-radius: 4px;
         font-size: 13px; font-family: inherit; cursor: pointer;
-        transition: background 0.15s ease;
+        box-sizing: border-box;
+        transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
         background: ${bg}; color: ${primary ? "#1b2838" : "#d6d7d8"};
         ${primary ? "font-weight: bold;" : ""}
       `;
-      btn.addEventListener("mouseenter", () => { btn.style.background = bgHover; });
-      btn.addEventListener("mouseleave", () => { btn.style.background = bg; });
+      makeFocusable(btn, {
+        baseBg: bg,
+        hoverBg: bgHover,
+        focusBorderColor: primary ? "#ffffff" : "#67c1f5",
+        autoFocus,
+      });
       return btn;
     };
 
-    const cancelBtn = makeBtn("Cancel", false);
+    const cancelBtn = makeBtn("Cancel", false, true);
     cancelBtn.addEventListener("click", () => this.close());
 
+    let isSaving = false;
     const saveBtn = makeBtn("Save", true);
     saveBtn.addEventListener("click", async () => {
+      if (isSaving) return;
       const key = input.value.trim();
       if (!key) {
         console.warn(LOG_PREFIX, "Save clicked with empty API key");
@@ -161,15 +158,15 @@ export class SettingsOverlay {
       }
 
       console.log(LOG_PREFIX, "Save clicked, validating...");
+      isSaving = true;
       saveBtn.textContent = "Saving...";
-      saveBtn.style.pointerEvents = "none";
       saveBtn.style.opacity = "0.6";
 
       const result = await validateApiKey(key);
 
       saveBtn.textContent = "Save";
-      saveBtn.style.pointerEvents = "";
       saveBtn.style.opacity = "";
+      isSaving = false;
 
       if (result.status === 200) {
         console.log(LOG_PREFIX, "Showing success result");
@@ -180,35 +177,106 @@ export class SettingsOverlay {
       }
     });
 
+    // 2D directional navigation between input and buttons
+    input.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown" || e.key === "Down") {
+        e.preventDefault();
+        cancelBtn.focus();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        saveBtn.click();
+      }
+    });
+
+    cancelBtn.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp" || e.key === "Up") {
+        e.preventDefault();
+        input.focus();
+      } else if (e.key === "ArrowRight" || e.key === "Right") {
+        e.preventDefault();
+        saveBtn.focus();
+      }
+    });
+
+    saveBtn.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp" || e.key === "Up") {
+        e.preventDefault();
+        input.focus();
+      } else if (e.key === "ArrowLeft" || e.key === "Left") {
+        e.preventDefault();
+        cancelBtn.focus();
+      }
+    });
+
     buttonRow.appendChild(cancelBtn);
     buttonRow.appendChild(saveBtn);
     panel.appendChild(buttonRow);
 
-    // Dismiss
+    // Dismiss on outside click
     backdrop.addEventListener("pointerdown", (e) => {
       if (e.target === backdrop) this.close();
     });
-    this.keyHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") this.close();
-    };
-    window.addEventListener("keydown", this.keyHandler, true);
 
     backdrop.appendChild(panel);
     document.body.appendChild(backdrop);
     this.backdrop = backdrop;
-    input.focus();
+
+    // Trap focus and suspend background store elements immediately and synchronously
+    this.modalTrap = trapModalFocus(backdrop, cancelBtn, () => this.close());
+
+    // Asynchronously load settings without delaying modal mount or focus
+    this.loadSavedSettings(input, resultArea);
   }
 
-  public close(): void {
+  public close(refocus = true): void {
     if (this.backdrop) {
       console.log(LOG_PREFIX, "Closing settings overlay");
     }
-    if (this.keyHandler) {
-      window.removeEventListener("keydown", this.keyHandler, true);
-      this.keyHandler = null;
+    if (this.modalTrap) {
+      this.modalTrap.release();
+      this.modalTrap = null;
     }
     this.backdrop?.remove();
     this.backdrop = null;
+    if (refocus) {
+      refocusActionTarget();
+    }
+  }
+
+  private async loadSavedSettings(input: HTMLInputElement, resultArea: HTMLElement): Promise<void> {
+    if (typeof backend === "undefined" || typeof backend.getSettings !== "function") {
+      return;
+    }
+
+    try {
+      const rawSettings = await backend.getSettings();
+      const settings = typeof rawSettings === "string" ? JSON.parse(rawSettings) : rawSettings;
+      if (settings && settings.has_key) {
+        input.placeholder = settings.masked_key || "••••••••";
+
+        if (settings.username) {
+          this.showSuccess(resultArea, settings.username, settings.daily_usage, settings.daily_limit);
+        } else {
+          this.showLoading(resultArea);
+        }
+
+        validateApiKey("").then((res) => {
+          if (res.status === 200 && res.username) {
+            this.showSuccess(resultArea, res.username, res.daily_usage, res.daily_limit);
+          } else if (res.status === 401 || res.status === 403) {
+            this.showError(resultArea, "API Key Expired or Invalid");
+          }
+        }).catch((err) => {
+          console.warn(LOG_PREFIX, "Failed refreshing user stats on open:", err);
+        });
+      } else if (settings && settings.expired) {
+        console.warn(LOG_PREFIX, "Saved API key was expired and has been cleared.");
+        input.placeholder = "Enter your API key";
+        resultArea.style.display = "none";
+      }
+    } catch (err) {
+      console.warn(LOG_PREFIX, "Could not fetch existing settings:", err);
+    }
   }
 
   private showLoading(container: HTMLElement): void {

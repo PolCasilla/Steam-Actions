@@ -1,4 +1,5 @@
 import type { GameContext } from "../domain/action-item";
+import { makeFocusable, refocusActionTarget, trapModalFocus, type ModalTrap } from "./focusable";
 
 const OVERLAY_ID = "steam-actions-game-status-overlay";
 const LOG_PREFIX = "[steam-actions:game-status]";
@@ -58,14 +59,17 @@ async function fetchGameStatus(appid: string): Promise<GameStatus> {
  */
 export class GameStatusOverlay {
   private backdrop: HTMLElement | null = null;
-  private keyHandler: ((e: KeyboardEvent) => void) | null = null;
+  private modalTrap: ModalTrap | null = null;
 
-  public async open(context: GameContext): Promise<void> {
+  public open(context: GameContext): void {
     console.log(LOG_PREFIX, "Opening unified dashboard for:", context.appId);
-    this.close();
+    this.close(false);
 
     const backdrop = document.createElement("div");
     backdrop.id = OVERLAY_ID;
+    backdrop.setAttribute("role", "dialog");
+    backdrop.setAttribute("aria-modal", "true");
+    backdrop.setAttribute("data-panel", '{"flow-children":"column","autoFocus":true}');
     backdrop.style.cssText = `
       position: fixed; inset: 0; z-index: 2147483647;
       display: flex; align-items: center; justify-content: center;
@@ -74,6 +78,7 @@ export class GameStatusOverlay {
     `;
 
     const panel = document.createElement("div");
+    panel.setAttribute("data-panel", '{"flow-children":"column"}');
     panel.style.cssText = `
       background: #1b2838; border: 1px solid #4c6b88; border-radius: 4px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.85);
@@ -85,16 +90,32 @@ export class GameStatusOverlay {
     document.body.appendChild(backdrop);
     this.backdrop = backdrop;
 
-    this.keyHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") this.close();
-    };
-    window.addEventListener("keydown", this.keyHandler, true);
     backdrop.addEventListener("pointerdown", (e) => {
       if (e.target === backdrop) this.close();
     });
 
-    this.renderLoading(panel, context);
+    const loadingCloseBtn = this.renderLoading(panel, context);
 
+    // Trap focus and suspend background store elements immediately
+    this.modalTrap = trapModalFocus(backdrop, loadingCloseBtn, () => this.close());
+
+    // Fetch game status in the background
+    this.loadStatus(panel, context);
+  }
+
+  public close(refocus = true): void {
+    if (this.modalTrap) {
+      this.modalTrap.release();
+      this.modalTrap = null;
+    }
+    this.backdrop?.remove();
+    this.backdrop = null;
+    if (refocus) {
+      refocusActionTarget();
+    }
+  }
+
+  private async loadStatus(panel: HTMLElement, context: GameContext): Promise<void> {
     try {
       const status = await fetchGameStatus(context.appId);
       if (!status.ok) {
@@ -109,16 +130,7 @@ export class GameStatusOverlay {
     }
   }
 
-  public close(): void {
-    if (this.keyHandler) {
-      window.removeEventListener("keydown", this.keyHandler, true);
-      this.keyHandler = null;
-    }
-    this.backdrop?.remove();
-    this.backdrop = null;
-  }
-
-  private renderLoading(panel: HTMLElement, context: GameContext): void {
+  private renderLoading(panel: HTMLElement, context: GameContext): HTMLElement {
     panel.replaceChildren();
 
     const spinnerWrap = document.createElement("div");
@@ -147,6 +159,26 @@ export class GameStatusOverlay {
     name.textContent = context.title;
     name.style.cssText = "font-size: 13px; color: #ffffff; text-align: center;";
     panel.appendChild(name);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.textContent = "Cancel";
+    closeBtn.style.cssText = `
+      display: block; margin: 16px auto 0 auto;
+      padding: 6px 20px; border: 2px solid transparent; border-radius: 4px;
+      font-size: 12px; font-family: inherit; cursor: pointer;
+      background: #2a475e; color: #d6d7d8; box-sizing: border-box;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    `;
+    makeFocusable(closeBtn, {
+      baseBg: "#2a475e",
+      hoverBg: "#3d6c8e",
+      focusBorderColor: "#67c1f5",
+      onActivate: () => this.close(),
+    });
+    closeBtn.addEventListener("click", () => this.close());
+    panel.appendChild(closeBtn);
+    return closeBtn;
   }
 
   private renderStatus(panel: HTMLElement, context: GameContext, status: GameStatus): void {
@@ -184,11 +216,18 @@ export class GameStatusOverlay {
       btnRow.style.cssText = "display: flex; gap: 8px;";
 
       const dlBtn = document.createElement("button");
+      dlBtn.type = "button";
       dlBtn.textContent = "Re-download Emu Files";
       dlBtn.style.cssText = `
-        padding: 5px 12px; border: none; border-radius: 2px;
+        padding: 6px 14px; border: 2px solid transparent; border-radius: 4px;
         background: #ff9800; color: #1b2838; font-weight: bold; font-size: 12px; cursor: pointer;
+        box-sizing: border-box; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
       `;
+      makeFocusable(dlBtn, {
+        baseBg: "#ff9800",
+        hoverBg: "#ffb74d",
+        focusBorderColor: "#ffffff",
+      });
       dlBtn.addEventListener("click", async () => {
         dlBtn.textContent = "Downloading...";
         try {
@@ -305,6 +344,7 @@ export class GameStatusOverlay {
 
     // 4. Action Buttons
     const actionsRow = document.createElement("div");
+    actionsRow.setAttribute("data-panel", '{"flow-children":"row"}');
     actionsRow.style.cssText = "display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;";
 
     const statusMsg = document.createElement("div");
@@ -320,11 +360,18 @@ export class GameStatusOverlay {
     if (installed) {
       // Crack button
       const crackBtn = document.createElement("button");
+      crackBtn.type = "button";
       crackBtn.textContent = isCracked ? "Re-apply Crack" : "Apply Offline Crack";
       crackBtn.style.cssText = `
-        padding: 8px 16px; border: none; border-radius: 2px; font-size: 12px; font-weight: bold;
-        background: #4caf50; color: #ffffff; cursor: pointer; transition: opacity 0.15s ease;
+        padding: 8px 16px; border: 2px solid transparent; border-radius: 4px; font-size: 12px; font-weight: bold;
+        background: #4caf50; color: #ffffff; cursor: pointer;
+        box-sizing: border-box; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
       `;
+      makeFocusable(crackBtn, {
+        baseBg: "#4caf50",
+        hoverBg: "#66bb6a",
+        focusBorderColor: "#ffffff",
+      });
       crackBtn.addEventListener("click", async () => {
         crackBtn.textContent = "Applying Crack...";
         crackBtn.style.opacity = "0.7";
@@ -353,11 +400,18 @@ export class GameStatusOverlay {
       // Restore button (if cracked or backup exists)
       if (isCracked || emu?.has_backup) {
         const restoreBtn = document.createElement("button");
+        restoreBtn.type = "button";
         restoreBtn.textContent = "Restore Original";
         restoreBtn.style.cssText = `
-          padding: 8px 14px; border: none; border-radius: 2px; font-size: 12px; font-weight: bold;
+          padding: 8px 14px; border: 2px solid transparent; border-radius: 4px; font-size: 12px; font-weight: bold;
           background: #f44336; color: #ffffff; cursor: pointer;
+          box-sizing: border-box; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
         `;
+        makeFocusable(restoreBtn, {
+          baseBg: "#f44336",
+          hoverBg: "#e57373",
+          focusBorderColor: "#ffffff",
+        });
         restoreBtn.addEventListener("click", async () => {
           restoreBtn.textContent = "Restoring...";
           try {
@@ -381,11 +435,18 @@ export class GameStatusOverlay {
 
       // Export ZIP button
       const zipBtn = document.createElement("button");
+      zipBtn.type = "button";
       zipBtn.textContent = "Export ZIP";
       zipBtn.style.cssText = `
-        padding: 8px 14px; border: none; border-radius: 2px; font-size: 12px;
+        padding: 8px 14px; border: 2px solid transparent; border-radius: 4px; font-size: 12px;
         background: #2a475e; color: #67c1f5; cursor: pointer;
+        box-sizing: border-box; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
       `;
+      makeFocusable(zipBtn, {
+        baseBg: "#2a475e",
+        hoverBg: "#3d6c8e",
+        focusBorderColor: "#67c1f5",
+      });
       zipBtn.addEventListener("click", async () => {
         zipBtn.textContent = "Exporting...";
         try {
@@ -409,15 +470,31 @@ export class GameStatusOverlay {
 
     // Close button
     const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
     closeBtn.textContent = "Close";
     closeBtn.style.cssText = `
-      padding: 8px 16px; border: none; border-radius: 2px; font-size: 12px;
+      padding: 8px 16px; border: 2px solid transparent; border-radius: 4px; font-size: 12px;
       background: #2a475e; color: #d6d7d8; cursor: pointer;
+      box-sizing: border-box; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
+    makeFocusable(closeBtn, {
+      baseBg: "#2a475e",
+      hoverBg: "#3d6c8e",
+      focusBorderColor: "#67c1f5",
+    });
     closeBtn.addEventListener("click", () => this.close());
     actionsRow.appendChild(closeBtn);
 
     panel.appendChild(actionsRow);
+
+    const firstFocusable = actionsRow.querySelector<HTMLElement>(".Focusable");
+    if (firstFocusable) {
+      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(() => firstFocusable.focus());
+      } else {
+        firstFocusable.focus();
+      }
+    }
   }
 
   private renderError(panel: HTMLElement, context: GameContext, errorMessage: string): void {
@@ -437,12 +514,24 @@ export class GameStatusOverlay {
     panel.appendChild(errorCard);
 
     const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
     closeBtn.textContent = "Close";
     closeBtn.style.cssText = `
-      padding: 8px 18px; border: none; border-radius: 2px;
+      padding: 8px 18px; border: 2px solid transparent; border-radius: 4px;
       background: #2a475e; color: #d6d7d8; cursor: pointer;
+      box-sizing: border-box; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
+    makeFocusable(closeBtn, {
+      baseBg: "#2a475e",
+      hoverBg: "#3d6c8e",
+      focusBorderColor: "#67c1f5",
+    });
     closeBtn.addEventListener("click", () => this.close());
     panel.appendChild(closeBtn);
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => closeBtn.focus());
+    } else {
+      closeBtn.focus();
+    }
   }
 }
