@@ -1,4 +1,5 @@
 import type { GameContext } from "../domain/action-item";
+import { makeFocusable, refocusActionTarget, trapModalFocus, type ModalTrap } from "./focusable";
 
 const OVERLAY_ID = "steam-actions-library-overlay";
 const LOG_PREFIX = "[steam-actions:add-to-library]";
@@ -53,16 +54,19 @@ export type AddToLibrarySuccessCallback = (context: GameContext) => void;
  */
 export class AddToLibraryOverlay {
   private backdrop: HTMLElement | null = null;
-  private keyHandler: ((e: KeyboardEvent) => void) | null = null;
+  private modalTrap: ModalTrap | null = null;
 
   public constructor(private readonly onSuccess?: AddToLibrarySuccessCallback) {}
 
-  public async open(context: GameContext): Promise<void> {
+  public open(context: GameContext): void {
     console.log(LOG_PREFIX, "Opening Add to Library overlay for:", context);
-    this.close();
+    this.close(false);
 
     const backdrop = document.createElement("div");
     backdrop.id = OVERLAY_ID;
+    backdrop.setAttribute("role", "dialog");
+    backdrop.setAttribute("aria-modal", "true");
+    backdrop.setAttribute("data-panel", '{"flow-children":"column","autoFocus":true}');
     backdrop.style.cssText = `
       position: fixed; inset: 0; z-index: 2147483647;
       display: flex; align-items: center; justify-content: center;
@@ -71,6 +75,7 @@ export class AddToLibraryOverlay {
     `;
 
     const panel = document.createElement("div");
+    panel.setAttribute("data-panel", '{"flow-children":"column"}');
     panel.style.cssText = `
       background: #1b2838; border: 1px solid #4c6b88; border-radius: 4px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.85);
@@ -82,33 +87,34 @@ export class AddToLibraryOverlay {
     document.body.appendChild(backdrop);
     this.backdrop = backdrop;
 
-    this.keyHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") this.close();
-    };
-    window.addEventListener("keydown", this.keyHandler, true);
-
     backdrop.addEventListener("pointerdown", (e) => {
       if (e.target === backdrop) this.close();
     });
 
-    await this.executeAddFlow(panel, context);
+    const cancelBtn = this.renderLoading(panel, context);
+
+    // Trap focus and suspend background store elements immediately
+    this.modalTrap = trapModalFocus(backdrop, cancelBtn, () => this.close());
+
+    this.executeAddFlow(panel, context);
   }
 
-  public close(): void {
+  public close(refocus = true): void {
     if (this.backdrop) {
       console.log(LOG_PREFIX, "Closing overlay");
     }
-    if (this.keyHandler) {
-      window.removeEventListener("keydown", this.keyHandler, true);
-      this.keyHandler = null;
+    if (this.modalTrap) {
+      this.modalTrap.release();
+      this.modalTrap = null;
     }
     this.backdrop?.remove();
     this.backdrop = null;
+    if (refocus) {
+      refocusActionTarget();
+    }
   }
 
   private async executeAddFlow(panel: HTMLElement, context: GameContext): Promise<void> {
-    this.renderLoading(panel, context);
-
     try {
       const result = await addToLibraryApi(context);
       if (result.success) {
@@ -128,7 +134,7 @@ export class AddToLibraryOverlay {
     }
   }
 
-  private renderLoading(panel: HTMLElement, context: GameContext): void {
+  private renderLoading(panel: HTMLElement, context: GameContext): HTMLElement {
     panel.replaceChildren();
 
     // Spinner SVG
@@ -174,8 +180,27 @@ export class AddToLibraryOverlay {
     // Subtext
     const subtext = document.createElement("div");
     subtext.textContent = "Connecting to API, please wait...";
-    subtext.style.cssText = "font-size: 13px; color: #8f98a0;";
+    subtext.style.cssText = "font-size: 13px; color: #8f98a0; margin-bottom: 16px;";
     panel.appendChild(subtext);
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.style.cssText = `
+      padding: 6px 20px; border: 2px solid transparent; border-radius: 4px;
+      font-size: 12px; font-family: inherit; cursor: pointer;
+      background: #2a475e; color: #d6d7d8; box-sizing: border-box;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    `;
+    makeFocusable(cancelBtn, {
+      baseBg: "#2a475e",
+      hoverBg: "#3d6c8e",
+      focusBorderColor: "#67c1f5",
+      onActivate: () => this.close(),
+    });
+    cancelBtn.addEventListener("click", () => this.close());
+    panel.appendChild(cancelBtn);
+    return cancelBtn;
   }
 
   private renderSuccess(panel: HTMLElement, context: GameContext): void {
@@ -224,16 +249,27 @@ export class AddToLibraryOverlay {
 
     // Action button
     const okBtn = document.createElement("button");
+    okBtn.type = "button";
     okBtn.textContent = "OK";
     okBtn.style.cssText = `
-      padding: 9px 28px; border: none; border-radius: 3px;
+      padding: 9px 28px; border: 2px solid transparent; border-radius: 4px;
       font-size: 13px; font-family: inherit; font-weight: bold; cursor: pointer;
-      background: #67c1f5; color: #1b2838; transition: background 0.15s ease;
+      background: #67c1f5; color: #1b2838; box-sizing: border-box;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
-    okBtn.addEventListener("mouseenter", () => { okBtn.style.background = "#8ed4f8"; });
-    okBtn.addEventListener("mouseleave", () => { okBtn.style.background = "#67c1f5"; });
+    makeFocusable(okBtn, {
+      baseBg: "#67c1f5",
+      hoverBg: "#8ed4f8",
+      focusBorderColor: "#ffffff",
+    });
     okBtn.addEventListener("click", () => this.close());
     panel.appendChild(okBtn);
+
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => okBtn.focus());
+    } else {
+      okBtn.focus();
+    }
   }
 
   private renderError(panel: HTMLElement, context: GameContext, errorMessage: string): void {
@@ -278,31 +314,51 @@ export class AddToLibraryOverlay {
 
     // Button row: Retry & Close
     const btnRow = document.createElement("div");
+    btnRow.setAttribute("data-panel", '{"flow-children":"row"}');
     btnRow.style.cssText = "display: flex; gap: 10px; justify-content: center;";
 
     const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
     closeBtn.textContent = "Close";
     closeBtn.style.cssText = `
-      padding: 8px 20px; border: none; border-radius: 3px;
+      padding: 8px 20px; border: 2px solid transparent; border-radius: 4px;
       font-size: 13px; font-family: inherit; cursor: pointer;
-      background: #2a475e; color: #d6d7d8; transition: background 0.15s ease;
+      background: #2a475e; color: #d6d7d8; box-sizing: border-box;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
-    closeBtn.addEventListener("mouseenter", () => { closeBtn.style.background = "#3d6c8e"; });
-    closeBtn.addEventListener("mouseleave", () => { closeBtn.style.background = "#2a475e"; });
+    makeFocusable(closeBtn, {
+      baseBg: "#2a475e",
+      hoverBg: "#3d6c8e",
+      focusBorderColor: "#67c1f5",
+    });
     closeBtn.addEventListener("click", () => this.close());
 
     const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
     retryBtn.textContent = "Retry";
     retryBtn.style.cssText = `
-      padding: 8px 20px; border: none; border-radius: 3px;
+      padding: 8px 20px; border: 2px solid transparent; border-radius: 4px;
       font-size: 13px; font-family: inherit; font-weight: bold; cursor: pointer;
-      background: #67c1f5; color: #1b2838; transition: background 0.15s ease;
+      background: #67c1f5; color: #1b2838; box-sizing: border-box;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
-    retryBtn.addEventListener("mouseenter", () => { retryBtn.style.background = "#8ed4f8"; });
-    retryBtn.addEventListener("mouseleave", () => { retryBtn.style.background = "#67c1f5"; });
+    makeFocusable(retryBtn, {
+      baseBg: "#67c1f5",
+      hoverBg: "#8ed4f8",
+      focusBorderColor: "#ffffff",
+    });
     retryBtn.addEventListener("click", () => {
       this.executeAddFlow(panel, context);
     });
+
+    btnRow.append(closeBtn, retryBtn);
+    panel.appendChild(btnRow);
+
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => retryBtn.focus());
+    } else {
+      retryBtn.focus();
+    }
 
     btnRow.append(closeBtn, retryBtn);
     panel.appendChild(btnRow);

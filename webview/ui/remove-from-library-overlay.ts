@@ -1,4 +1,5 @@
 import type { GameContext } from "../domain/action-item";
+import { makeFocusable, refocusActionTarget, trapModalFocus, type ModalTrap } from "./focusable";
 
 const OVERLAY_ID = "steam-actions-remove-library-overlay";
 const LOG_PREFIX = "[steam-actions:remove-from-library]";
@@ -53,17 +54,20 @@ export type RemoveFromLibrarySuccessCallback = (context: GameContext) => void;
  */
 export class RemoveFromLibraryOverlay {
   private backdrop: HTMLElement | null = null;
-  private keyHandler: ((e: KeyboardEvent) => void) | null = null;
+  private modalTrap: ModalTrap | null = null;
   private isProcessing = false;
 
   public constructor(private readonly onSuccess?: RemoveFromLibrarySuccessCallback) {}
 
   public open(context: GameContext): void {
     console.log(LOG_PREFIX, "Opening Remove from Library confirmation overlay for:", context);
-    this.close();
+    this.close(false);
 
     const backdrop = document.createElement("div");
     backdrop.id = OVERLAY_ID;
+    backdrop.setAttribute("role", "dialog");
+    backdrop.setAttribute("aria-modal", "true");
+    backdrop.setAttribute("data-panel", '{"flow-children":"column","autoFocus":true}');
     backdrop.style.cssText = `
       position: fixed; inset: 0; z-index: 2147483647;
       display: flex; align-items: center; justify-content: center;
@@ -72,6 +76,7 @@ export class RemoveFromLibraryOverlay {
     `;
 
     const panel = document.createElement("div");
+    panel.setAttribute("data-panel", '{"flow-children":"column"}');
     panel.style.cssText = `
       background: #1b2838; border: 1px solid #4c6b88; border-radius: 4px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.85);
@@ -83,13 +88,6 @@ export class RemoveFromLibraryOverlay {
     document.body.appendChild(backdrop);
     this.backdrop = backdrop;
 
-    this.keyHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !this.isProcessing) {
-        this.close();
-      }
-    };
-    window.addEventListener("keydown", this.keyHandler, true);
-
     backdrop.addEventListener("pointerdown", (e) => {
       if (e.target === backdrop && !this.isProcessing) {
         this.close();
@@ -97,19 +95,27 @@ export class RemoveFromLibraryOverlay {
     });
 
     this.renderConfirmation(panel, context);
+
+    // Trap focus and suspend background store elements immediately
+    this.modalTrap = trapModalFocus(backdrop, null, () => {
+      if (!this.isProcessing) this.close();
+    });
   }
 
-  public close(): void {
+  public close(refocus = true): void {
     if (this.backdrop) {
       console.log(LOG_PREFIX, "Closing overlay");
     }
-    if (this.keyHandler) {
-      window.removeEventListener("keydown", this.keyHandler, true);
-      this.keyHandler = null;
+    if (this.modalTrap) {
+      this.modalTrap.release();
+      this.modalTrap = null;
     }
     this.backdrop?.remove();
     this.backdrop = null;
     this.isProcessing = false;
+    if (refocus) {
+      refocusActionTarget();
+    }
   }
 
   private renderConfirmation(panel: HTMLElement, context: GameContext): void {
@@ -160,34 +166,50 @@ export class RemoveFromLibraryOverlay {
 
     // Buttons: Cancel & Remove
     const btnRow = document.createElement("div");
+    btnRow.setAttribute("data-panel", '{"flow-children":"row"}');
     btnRow.style.cssText = "display: flex; gap: 10px; justify-content: flex-end;";
 
     const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
     cancelBtn.textContent = "Cancel";
     cancelBtn.style.cssText = `
-      padding: 8px 20px; border: none; border-radius: 3px;
-      font-size: 13px; font-family: inherit; cursor: pointer;
-      background: #2a475e; color: #d6d7d8; transition: background 0.15s ease;
+      padding: 8px 20px; border: 2px solid transparent; border-radius: 4px;
+      font-size: 13px; font-family: inherit; cursor: pointer; box-sizing: border-box;
+      background: #2a475e; color: #d6d7d8; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
-    cancelBtn.addEventListener("mouseenter", () => { cancelBtn.style.background = "#3d6c8e"; });
-    cancelBtn.addEventListener("mouseleave", () => { cancelBtn.style.background = "#2a475e"; });
+    makeFocusable(cancelBtn, {
+      baseBg: "#2a475e",
+      hoverBg: "#3d6c8e",
+      focusBorderColor: "#67c1f5",
+      autoFocus: true,
+    });
     cancelBtn.addEventListener("click", () => this.close());
 
     const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
     removeBtn.textContent = "Remove";
     removeBtn.style.cssText = `
-      padding: 8px 20px; border: none; border-radius: 3px;
-      font-size: 13px; font-family: inherit; font-weight: bold; cursor: pointer;
-      background: #e53935; color: #ffffff; transition: background 0.15s ease;
+      padding: 8px 20px; border: 2px solid transparent; border-radius: 4px;
+      font-size: 13px; font-family: inherit; font-weight: bold; cursor: pointer; box-sizing: border-box;
+      background: #e53935; color: #ffffff; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
-    removeBtn.addEventListener("mouseenter", () => { removeBtn.style.background = "#ef5350"; });
-    removeBtn.addEventListener("mouseleave", () => { removeBtn.style.background = "#e53935"; });
+    makeFocusable(removeBtn, {
+      baseBg: "#e53935",
+      hoverBg: "#ef5350",
+      focusBorderColor: "#ffffff",
+    });
     removeBtn.addEventListener("click", () => {
       this.executeRemoveFlow(panel, context);
     });
 
     btnRow.append(cancelBtn, removeBtn);
     panel.appendChild(btnRow);
+
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => cancelBtn.focus());
+    } else {
+      cancelBtn.focus();
+    }
   }
 
   private async executeRemoveFlow(panel: HTMLElement, context: GameContext): Promise<void> {
@@ -311,16 +333,26 @@ export class RemoveFromLibraryOverlay {
 
     // Action button
     const okBtn = document.createElement("button");
+    okBtn.type = "button";
     okBtn.textContent = "OK";
     okBtn.style.cssText = `
-      padding: 9px 28px; border: none; border-radius: 3px;
-      font-size: 13px; font-family: inherit; font-weight: bold; cursor: pointer;
-      background: #67c1f5; color: #1b2838; transition: background 0.15s ease;
+      padding: 9px 28px; border: 2px solid transparent; border-radius: 4px;
+      font-size: 13px; font-family: inherit; font-weight: bold; cursor: pointer; box-sizing: border-box;
+      background: #67c1f5; color: #1b2838; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
-    okBtn.addEventListener("mouseenter", () => { okBtn.style.background = "#8ed4f8"; });
-    okBtn.addEventListener("mouseleave", () => { okBtn.style.background = "#67c1f5"; });
+    makeFocusable(okBtn, {
+      baseBg: "#67c1f5",
+      hoverBg: "#8ed4f8",
+      focusBorderColor: "#ffffff",
+    });
     okBtn.addEventListener("click", () => this.close());
     panel.appendChild(okBtn);
+
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => okBtn.focus());
+    } else {
+      okBtn.focus();
+    }
   }
 
   private renderError(panel: HTMLElement, context: GameContext, errorMessage: string): void {
@@ -368,28 +400,45 @@ export class RemoveFromLibraryOverlay {
     btnRow.style.cssText = "display: flex; gap: 10px; justify-content: center;";
 
     const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
     closeBtn.textContent = "Close";
     closeBtn.style.cssText = `
-      padding: 8px 20px; border: none; border-radius: 3px;
-      font-size: 13px; font-family: inherit; cursor: pointer;
-      background: #2a475e; color: #d6d7d8; transition: background 0.15s ease;
+      padding: 8px 20px; border: 2px solid transparent; border-radius: 4px;
+      font-size: 13px; font-family: inherit; cursor: pointer; box-sizing: border-box;
+      background: #2a475e; color: #d6d7d8; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
-    closeBtn.addEventListener("mouseenter", () => { closeBtn.style.background = "#3d6c8e"; });
-    closeBtn.addEventListener("mouseleave", () => { closeBtn.style.background = "#2a475e"; });
+    makeFocusable(closeBtn, {
+      baseBg: "#2a475e",
+      hoverBg: "#3d6c8e",
+      focusBorderColor: "#67c1f5",
+    });
     closeBtn.addEventListener("click", () => this.close());
 
     const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
     retryBtn.textContent = "Retry";
     retryBtn.style.cssText = `
-      padding: 8px 20px; border: none; border-radius: 3px;
-      font-size: 13px; font-family: inherit; font-weight: bold; cursor: pointer;
-      background: #67c1f5; color: #1b2838; transition: background 0.15s ease;
+      padding: 8px 20px; border: 2px solid transparent; border-radius: 4px;
+      font-size: 13px; font-family: inherit; font-weight: bold; cursor: pointer; box-sizing: border-box;
+      background: #67c1f5; color: #1b2838; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     `;
-    retryBtn.addEventListener("mouseenter", () => { retryBtn.style.background = "#8ed4f8"; });
-    retryBtn.addEventListener("mouseleave", () => { retryBtn.style.background = "#67c1f5"; });
+    makeFocusable(retryBtn, {
+      baseBg: "#67c1f5",
+      hoverBg: "#8ed4f8",
+      focusBorderColor: "#ffffff",
+    });
     retryBtn.addEventListener("click", () => {
       this.executeRemoveFlow(panel, context);
     });
+
+    btnRow.append(closeBtn, retryBtn);
+    panel.appendChild(btnRow);
+
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => retryBtn.focus());
+    } else {
+      retryBtn.focus();
+    }
 
     btnRow.append(closeBtn, retryBtn);
     panel.appendChild(btnRow);
